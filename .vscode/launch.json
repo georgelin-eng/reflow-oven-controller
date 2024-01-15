@@ -1,0 +1,24 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "C/C++ Runner: Debug Session",
+      "type": "cppdbg",
+      "request": "launch",
+      "args": [],
+      "stopAtEntry": false,
+      "externalConsole": true,
+      "cwd": "c:/Users/flipa/OneDrive - UBC/University/Course Materials/2nd year - Term 2/ELEC 291 - Electrical Engineering Design Studio/reflow-oven-controller",
+      "program": "c:/Users/flipa/OneDrive - UBC/University/Course Materials/2nd year - Term 2/ELEC 291 - Electrical Engineering Design Studio/reflow-oven-controller/build/Debug/outDebug",
+      "MIMode": "gdb",
+      "miDebuggerPath": "gdb",
+      "setupCommands": [
+        {
+          "description": "Enable pretty-printing for gdb",
+          "text": "-enable-pretty-printing",
+          "ignoreFailures": true
+        }
+      ]
+    }
+  ]
+}
