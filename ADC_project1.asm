@@ -150,11 +150,12 @@ Send_BCD mac
 	ret
 	
 Send_formated_BCD:
-
+	
+	Send_BCD(bcd+3)
 	Send_BCD(bcd+2)
-	Send_BCD(bcd+1)
 	mov a, #46
 	lcall putchar
+	Send_BCD(bcd+1)
 	Send_BCD(bcd+0)
 	lcall putCR_NL
 	ret
@@ -191,14 +192,16 @@ waitms:
 ; We can display a number any way we want.  In this case with
 ; four decimal places.
 Display_formated_BCD:
-	Set_Cursor(2, 10)
+	Set_Cursor(2, 8)
+	Display_BCD(bcd+3)
 	Display_BCD(bcd+2)
 	Display_char(#'.')
 	Display_BCD(bcd+1)
 	Display_BCD(bcd+0)
-	Set_Cursor(2, 10)
-	Display_char(#'=')
+	;Set_Cursor(2, 10)
+	;Display_char(#'=')
 	ret
+	
 
 Read_ADC:
 	clr ADCF
@@ -255,9 +258,9 @@ main:
     
     ; initial messages in LCD
 	Set_Cursor(1, 1)
-    Send_Constant_String(#test_message)
+    ;Send_Constant_String(#test_message)
 	Set_Cursor(2, 1)
-    Send_Constant_String(#value_message)
+    ;Send_Constant_String(#value_message)
     
 Forever:
 
@@ -291,32 +294,36 @@ Forever:
 	mov y+3, #0
 	lcall div32
 
-	Load_y(01277)
-	lcall div32
+
+
+	;Load_y(803);multiplying V pin by 80.3153
+	;lcall mul32
+	
+	;Load_y(220000) ;adding 22, will change to ambient later
+	;lcall add32
 	
 	;use put char to put individual characters 
 	; Convert to BCD and display
 	lcall hex2bcd
 	
-	
 	lcall Display_formated_BCD
 	
-	Load_y(27305)
-	lcall sub32
-	lcall hex2bcd
+	;Load_y(27305)
+	;lcall sub32
+	;lcall hex2bcd
 	
 	lcall Send_formated_BCD
 		
-	mov R2, #250
-	lcall waitms
-	mov R2, #250
-	lcall waitms
+	;mov R2, #250
+	;lcall waitms
+	;mov R2, #250
+	;lcall waitms
     
 	
 	; Wait 500 ms between conversions
-	mov R2, #250
-	lcall waitms
-	mov R2, #250
+	;mov R2, #250
+	;lcall waitms
+	mov R2, #10
 	lcall waitms
 	
 	ljmp Forever
