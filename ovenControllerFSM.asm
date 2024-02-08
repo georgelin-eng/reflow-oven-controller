@@ -1,6 +1,7 @@
 
 
 
+
 ; Main file. FSM implementing the following sequence:
 ;       State 0: Power = 0% (default state)
 ;               if start = NO, self loop; if start = YES, next state
@@ -53,11 +54,11 @@ $LIST
 CLK                   EQU 16600000 ; Microcontroller system frequency in Hz
 BAUD                  EQU 115200   ; Baud rate of UART in bps 
 TIMER1_RELOAD         EQU (0x100-(CLK/(16*BAUD))) ; ISR that's used for serial???
-TIMER2_RELOAD         EQU (0x10000-(CLK/1000))    ; For ISR that runs every 1ms
+TIMER2_RELOAD         EQU (65536-(CLK/1000))    ; For ISR that runs every 1ms
 TIMER0_RELOAD         EQU (0x10000-(CLK/4096))    ; For 2kHz square wave
 
 ; Pin definitions + Hardware Wiring
-START_PIN             EQU P1.0 ; change to correct pin later
+START_PIN             EQU P1.5 ; change to correct pin later
 ; STOP_PIN              EQU P1.5 ; change to correct pin later
 ; INC_TIME_PIN          EQU P1.7 ; change to correct pin later
 ; INC_TEMP_PIN          EQU P1.7 ; change to correct pin later
@@ -67,6 +68,7 @@ CHANGE_MENU_PIN       EQU P1.6 ; change to correct pin later
 
 MENU_STATE_SOAK        EQU 0
 MENU_STATE_REFLOW      EQU 1
+MENU_STATE_TEST        EQU 2
 OVEN_STATE_PREHEAT     EQU 0
 OVEN_STATE_SOAK        EQU 1
 OVEN_STATE_REFLOW      EQU 2
@@ -138,10 +140,11 @@ LCD_soakTime    : db 'Soak Time: ', 0
 LCD_soakTemp    : db 'Soak Temp: ', 0
 LCD_reflowTime  : db 'Refl Time: ', 0
 LCD_reflowTemp  : db 'Refl Temp: ', 0
+LCD_TEST        : db 'TEST MESSAGE ', 0
 LCD_clearLine   : db '                ', 0 ; put at end to clear line
 
 preheatMessage  : db 'Preheat', 0
-soakMessage     : db 'Reflow', 0
+soakMessage     : db 'Soak', 0
 reflowMessage   : db 'Reflow', 0
 
 ; Messages to display on LCD when in Oven Controller FSM
@@ -179,11 +182,9 @@ Timer2_Init:
 	clr a
 	mov Count1ms+0, a
 	mov Count1ms+1, a
-	mov Count1ms+0 , a
-	mov Count1ms+1 , a
 	; Enable the timer and interrupts
 	orl EIE, #0x80 ; Enable timer 2 interrupt ET2=1
-    setb TR2  ; Enable timer 2
+        setb TR2  ; Enable timer 2
 	ret
 
 Timer0_ISR:
@@ -213,12 +214,19 @@ Timer2_ISR:
 	mov     a, Count1ms+1
 	cjne    a, #high(1000), Timer2_ISR_done	
 
-        ; ---  1s has passed ----
-        ; mov a, OVEN_STATE
-        ; inc a
-        ; mov OVEN_STATE, a
+        ; ; ---  1s has passed ----
+        mov a, OVEN_STATE
+        ADD A, #1
+        mov OVEN_STATE, a
+
+        ; reset seconds ms counter
+        clr a
+        mov Count1ms+0, a
+        mov Count1ms+1, a
         
         Timer2_ISR_done:
+        pop psw
+	pop acc
         reti
 
 Initilize_All:
@@ -320,41 +328,46 @@ OVEN_FSM:
         enterOvenStateCheck:
         mov a, OVEN_STATE
 
-        ; ovenFSM_preheat:
+        ovenFSM_preheat:
         cjne a, #OVEN_STATE_PREHEAT, ovenFSM_soak
         Set_Cursor(1, 1)
         Send_Constant_String(#preheatMessage)
         Send_Constant_String(#LCD_clearLine)
         Set_Cursor(2, 1)
         Send_Constant_String(#LCD_clearLine)
+        ljmp oven_FSM_done
 
         ovenFSM_soak:
         cjne a, #OVEN_STATE_SOAK, ovenFSM_reflow
-        ; Set_Cursor(1, 1)
-        ; Send_Constant_String(#preheatMessage)
-        ; Send_Constant_String(#LCD_clearLine)
-        ; Set_Cursor(2, 1)
-        ; Send_Constant_String(#LCD_clearLine)
+        Set_Cursor(1, 1)
+        Send_Constant_String(#soakMessage)
+        Send_Constant_String(#LCD_clearLine)
+        Set_Cursor(2, 1)
+        Send_Constant_String(#LCD_clearLine)
+        ljmp oven_FSM_done
 
         ovenFSM_reflow:
         cjne a, #OVEN_STATE_REFLOW, ovenFSM_exit
-        ; Set_Cursor(1, 1)
-        ; Send_Constant_String(#preheatMessage)
-        ; Send_Constant_String(#LCD_clearLine)
-        ; Set_Cursor(2, 1)
-        ; Send_Constant_String(#LCD_clearLine)
+        Set_Cursor(1, 1)
+        Send_Constant_String(#reflowMessage)
+        Send_Constant_String(#LCD_clearLine)
+        Set_Cursor(2, 1)
+        Send_Constant_String(#LCD_clearLine)
+        ljmp oven_FSM_done
 
         ovenFSM_exit:
-        ; mov OVEN_STATE, #OVEN_STATE_REFLOW
+        mov OVEN_STATE, #OVEN_STATE_PREHEAT
+        ljmp oven_FSM_done
+        
+        oven_FSM_done:
         ljmp OVEN_FSM
-
         ret
 
 MENU_FSM:        
 	jb CHANGE_MENU_PIN, enterMenuStateCheck
 	Wait_Milli_Seconds(#50)	      ; debounce delay
 	jb CHANGE_MENU_PIN, enterMenuStateCheck  ; 
-	jnb CHANGE_MENU_PIN, $             ; wait for release
+	jnb CHANGE_MENU_PIN, $        ; wait for release
 
         mov a, MENU_STATE
         inc a
@@ -397,11 +410,9 @@ MENU_FSM:
         Send_Constant_String(#LCD_clearLine)
         ljmp menu_FSM_done
 
-
         reset_menu_state: ; sets menu state variable to 0
         mov MENU_STATE, #MENU_STATE_SOAK
         ljmp menu_FSM_done
-
 
         menu_FSM_done:
         ret
@@ -441,7 +452,7 @@ main_program:
         Wait_Milli_Seconds(#50)
         jb CHANGE_MENU_PIN, noMenuButtonPress
         jnb CHANGE_MENU_PIN, $
-        setb IN_MENU_FLAG; successful button press, enter menu FSM loop ; - THIS LINE CAUSES THE BUG
+        ; setb IN_MENU_FLAG; successful button press, enter menu FSM loop ; - THIS LINE CAUSES THE BUG
         ljmp setMenuFlag ; this isn't executing...
         
         noMenuButtonPress:
@@ -450,7 +461,7 @@ main_program:
         enter_oven_fsm:
         clr IN_MENU_FLAG ; No longer in menu
         setb IN_OVEN_FLAG
-        ; lcall Timer2_Init
+        lcall Timer2_Init ; breaks things
         lcall OVEN_FSM ; will call STOP_PROCESS which loops back to the entry point
         lcall STOP_PROCESS ; added for safety
         
