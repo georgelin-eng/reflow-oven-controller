@@ -2,684 +2,824 @@
 0000              2   
 0000              3   
 0000              4   
-0000              5   ; Main file. FSM implementing the following sequence:
-0000              6   ;       State 0: Power = 0% (default state)
-0000              7   ;               if start = NO, self loop; if start = YES, next state
-0000              8   ;       State 1: Power = 100%; Sec = 0
-0000              9   ;               if temp <= 150, self loop; temp > 150, next
-0000             10   ;       State 2: Power = 20%
-0000             11   ;               if sec <= 60s, self loop; sec>60s, next
-0000             12   ;       State 3: Power = 100%; Sec = 0
-0000             13   ;               if temp <= 220, self loop; temp>220, next
-0000             14   ;       State 4: Power = 20%
-0000             15   ;               if sec <= 45s, self loop; sec >45, next
-0000             16   ;       State 5: Power = 0%
-0000             17   ;               if temp >=60, self loop; temp <60, next
-0000             18   ;       return to state 0
-0000             19   
-                 21   $LIST
-0000             23   
-0000             24   ;  N76E003 pinout:
-0000             25   ;                               -------
-0000             26   ;       PWM2/IC6/T0/AIN4/P0.5 -|1    20|- P0.4/AIN5/STADC/PWM3/IC3
-0000             27   ;               TXD/AIN3/P0.6 -|2    19|- P0.3/PWM5/IC5/AIN6
-0000             28   ;               RXD/AIN2/P0.7 -|3    18|- P0.2/ICPCK/OCDCK/RXD_1/[SCL]
-0000             29   ;                    RST/P2.0 -|4    17|- P0.1/PWM4/IC4/MISO
-0000             30   ;        INT0/OSCIN/AIN1/P3.0 -|5    16|- P0.0/PWM3/IC3/MOSI/T1
-0000             31   ;              INT1/AIN0/P1.7 -|6    15|- P1.0/PWM2/IC2/SPCLK
-0000             32   ;                         GND -|7    14|- P1.1/PWM1/IC1/AIN7/CLO
-0000             33   ;[SDA]/TXD_1/ICPDA/OCDDA/P1.6 -|8    13|- P1.2/PWM0/IC0
-0000             34   ;                         VDD -|9    12|- P1.3/SCL/[STADC]
-0000             35   ;            PWM5/IC7/SS/P1.5 -|10   11|- P1.4/SDA/FB/PWM1
-0000             36   ;                               -------
-0000             37   
+0000              5   
+0000              6   ; Main file. FSM implementing the following sequence:
+0000              7   ;       State 0: Power = 0% (default state)
+0000              8   ;               if start = NO, self loop; if start = YES, next state
+0000              9   ;       State 1: Power = 100%; Sec = 0
+0000             10   ;               if temp <= 150, self loop; temp > 150, next
+0000             11   ;       State 2: Power = 20%
+0000             12   ;               if sec <= 60s, self loop; sec>60s, next
+0000             13   ;       State 3: Power = 100%; Sec = 0
+0000             14   ;               if temp <= 220, self loop; temp>220, next
+0000             15   ;       State 4: Power = 20%
+0000             16   ;               if sec <= 45s, self loop; sec >45, next
+0000             17   ;       State 5: Power = 0%
+0000             18   ;               if temp >=60, self loop; temp <60, next
+0000             19   ;       return to state 0
+0000             20   
+                 22   $LIST
+0000             24   
+0000             25   ;  N76E003 pinout:
+0000             26   ;                               -------
+0000             27   ;       PWM2/IC6/T0/AIN4/P0.5 -|1    20|- P0.4/AIN5/STADC/PWM3/IC3
+0000             28   ;               TXD/AIN3/P0.6 -|2    19|- P0.3/PWM5/IC5/AIN6
+0000             29   ;               RXD/AIN2/P0.7 -|3    18|- P0.2/ICPCK/OCDCK/RXD_1/[SCL]
+0000             30   ;                    RST/P2.0 -|4    17|- P0.1/PWM4/IC4/MISO
+0000             31   ;        INT0/OSCIN/AIN1/P3.0 -|5    16|- P0.0/PWM3/IC3/MOSI/T1
+0000             32   ;              INT1/AIN0/P1.7 -|6    15|- P1.0/PWM2/IC2/SPCLK
+0000             33   ;                         GND -|7    14|- P1.1/PWM1/IC1/AIN7/CLO
+0000             34   ;[SDA]/TXD_1/ICPDA/OCDDA/P1.6 -|8    13|- P1.2/PWM0/IC0
+0000             35   ;                         VDD -|9    12|- P1.3/SCL/[STADC]
+0000             36   ;            PWM5/IC7/SS/P1.5 -|10   11|- P1.4/SDA/FB/PWM1
+0000             37   ;                               -------
 0000             38   
 0000             39   
-0000             40   ;-------------------------------------------------------------------------------------------------------------------------------------
-0000             41   
-0000             42   ;                                                              STYLE GUIDE
-0000             43   
-0000             44   ; End flag names with _FLAG
-0000             45   ; Use all upper case for constants (anything defined in equ or pin definitions), as it makes it easier to read quickly
-0000             46   ; Before any jump or logic block comment purpose and try to comment throughout - code should be self explanatory, comment "why" it was implemented this way
-0000             47   ; Before any block of code also comment who wrote it 
-0000             48   ; Aim for variable names with 8-20 characters
-0000             49   
-0000             50   ; --------------------------------------------------------------------------------------------------------------------------
-0000             51   
+0000             40   
+0000             41   ;-------------------------------------------------------------------------------------------------------------------------------------
+0000             42   
+0000             43   ;                                                              STYLE GUIDE
+0000             44   
+0000             45   ; End flag names with _FLAG
+0000             46   ; Use all upper case for constants (anything defined in equ or pin definitions), as it makes it easier to read quickly
+0000             47   ; Before any jump or logic block comment purpose and try to comment throughout - code should be self explanatory, comment "why" it was implemented this way
+0000             48   ; Before any block of code also comment who wrote it 
+0000             49   ; Aim for variable names with 8-20 characters
+0000             50   
+0000             51   ; --------------------------------------------------------------------------------------------------------------------------
 0000             52   
-0000             53   ; Timer constants
-0000             54   CLK                   EQU 16600000 ; Microcontroller system frequency in Hz
-0000             55   BAUD                  EQU 115200   ; Baud rate of UART in bps 
-0000             56   TIMER1_RELOAD         EQU (0x100-(CLK/(16*BAUD))) ; ISR that's used for serial???
-0000             57   TIMER2_RELOAD         EQU (65536-(CLK/1000))    ; For ISR that runs every 1ms
-0000             58   TIMER0_RELOAD         EQU (0x10000-(CLK/4096))    ; For 2kHz square wave
-0000             59   
-0000             60   ; Pin definitions + Hardware Wiring
-0000             61   START_PIN             EQU P1.5 ; change to correct pin later
-0000             62   ; STOP_PIN              EQU P1.5 ; change to correct pin later
-0000             63   ; INC_TIME_PIN          EQU P1.7 ; change to correct pin later
-0000             64   ; INC_TEMP_PIN          EQU P1.7 ; change to correct pin later
-0000             65   CHANGE_MENU_PIN       EQU P1.6 ; change to correct pin later
-0000             66   ; SSR_OUTPUT_PIN        EQU P3.0 ; change to correct pin later
-0000             67   
+0000             53   
+0000             54   ; Timer constants
+0000             55   CLK                   EQU 16600000 ; Microcontroller system frequency in Hz
+0000             56   BAUD                  EQU 115200   ; Baud rate of UART in bps 
+0000             57   TIMER1_RELOAD         EQU (0x100-(CLK/(16*BAUD))) ; ISR that's used for serial???
+0000             58   TIMER2_RELOAD         EQU (65536-(CLK/1000))    ; For ISR that runs every 1ms
+0000             59   TIMER0_RELOAD         EQU (0x10000-(CLK/4096))    ; For 2kHz square wave
+0000             60   
+0000             61   ; Pin definitions + Hardware Wiring
+0000             62   START_PIN             EQU P1.5 ; change to correct pin later
+0000             63   ; STOP_PIN              EQU P3.0 ; change to correct pin later
+0000             64   ; INC_TIME_PIN          EQU P1.1 ; change to correct pin later
+0000             65   ; INC_TEMP_PIN          EQU P1.1 ; change to correct pin later
+0000             66   CHANGE_MENU_PIN       EQU P1.6 ; change to correct pin later
+0000             67   ; SSR_OUTPUT_PIN        EQU P3.0 ; change to correct pin later
 0000             68   
-0000             69   MENU_STATE_SOAK        EQU 0
-0000             70   MENU_STATE_REFLOW      EQU 1
-0000             71   MENU_STATE_TEST        EQU 2
-0000             72   OVEN_STATE_PREHEAT     EQU 0
-0000             73   OVEN_STATE_SOAK        EQU 1
-0000             74   OVEN_STATE_REFLOW      EQU 2
-0000             75   
-0000             76   ; define vectors
-0000             77   ORG 0x0000 ; Reset vector
-0000 020685      78           ljmp main_program
-0003             79   ORG 0x0003 ; External interrupt 0 vector
-0003 32          80           reti
-000B             81   ORG 0x000B ; Timer/Counter 0 overflow interrupt vector
-000B 020407      82            ljmp Timer0_ISR
-0013             83   ORG 0x0013 ; External interrupt 1 vector
-0013 32          84            reti
-001B             85   ORG 0x001B ; Timer/Counter 1 overflow interrupt vector 
-001B 32          86            reti
-0023             87   ORG 0x0023 ; Serial port receive/transmit interrupt vector 
-0023 32          88            reti
-002B             89   ORG 0x002B ; Timer/Counter 2 overflow interrupt vector
-002B 020408      90            ljmp Timer2_ISR
-002E             91   
+0000             69   
+0000             70   MENU_STATE_SOAK       EQU 0
+0000             71   MENU_STATE_REFLOW     EQU 1
+0000             72   MENU_STATE_TEST       EQU 2
+0000             73   OVEN_STATE_PREHEAT    EQU 0
+0000             74   OVEN_STATE_SOAK       EQU 1
+0000             75   OVEN_STATE_REFLOW     EQU 2
+0000             76   
+0000             77   ; define vectors
+0000             78   ORG 0x0000 ; Reset vector
+0000 020714      79           ljmp main_program
+0003             80   ORG 0x0003 ; External interrupt 0 vector
+0003 32          81           reti
+000B             82   ORG 0x000B ; Timer/Counter 0 overflow interrupt vector
+000B 020407      83            ljmp Timer0_ISR
+0013             84   ORG 0x0013 ; External interrupt 1 vector
+0013 32          85            reti
+001B             86   ORG 0x001B ; Timer/Counter 1 overflow interrupt vector 
+001B 32          87            reti
+0023             88   ORG 0x0023 ; Serial port receive/transmit interrupt vector 
+0023 32          89            reti
+002B             90   ORG 0x002B ; Timer/Counter 2 overflow interrupt vector
+002B 020408      91            ljmp Timer2_ISR
 002E             92   
-002E             93   ; register definitions previously needed by 'math32.inc' - currently commented out for future changes
-0030             94   DSEG at 30H
-0030             95   x               : ds 4
-0034             96   y               : ds 4
-0038             97   bcd             : ds 5
-003D             98   bcdf            : ds 5
-0042             99   VLED_ADC        : ds 2
-0044            100   
-0044            101   OVEN_STATE      : ds 1 ; stores oven FSM state
-0045            102   MENU_STATE      : ds 1 ; stores menu FSM state
-0046            103   temp_soak       : ds 1 
-0047            104   time_soak       : ds 1
-0048            105   temp_refl       : ds 1
-0049            106   time_refl       : ds 1
-004A            107   pwm             : ds 1 ; controls output power to SSR
-004B            108   
-0030            109   dseg at 0x30
-0030            110   Count1ms        : ds 2 ; determines the number of 1ms increments that have passed 
-0032            111   
-002E            112   CSEG ;starts the absolute segment from that address
-002E            113   ; These 'EQU' must match the hardware wiring
-002E            114   LCD_RS          EQU P1.3
-002E            115   ;LCD_RW         EQU PX.X ; Not used in this code, connect the pin to GND
-002E            116   LCD_E           EQU P1.4
-002E            117   LCD_D4          EQU P0.0
-002E            118   LCD_D5          EQU P0.1
-002E            119   LCD_D6          EQU P0.2
-002E            120   LCD_D7          EQU P0.3
-002E            121   
-                123   	$LIST
-00E2            125   
-00E2            126   ; Flags that are used to control events 
-0000            127   BSEG 
-0000            128   mf              : dbit 1
-0001            129   IN_MENU_FLAG    : dbit 1
-0002            130   IN_OVEN_FLAG    : dbit 1
-0003            131   
+002E             93   
+002E             94   ; register definitions previously needed by 'math32.inc' - currently commented out for future changes
+0030             95   DSEG at 30H
+0030             96   x               : ds 4
+0034             97   y               : ds 4
+0038             98   bcd             : ds 5
+003D             99   bcdf            : ds 5
+0042            100   VLED_ADC        : ds 2
+0044            101   
+0044            102   OVEN_STATE      : ds 1 ; stores oven FSM state
+0045            103   MENU_STATE      : ds 1 ; stores menu FSM state
+0046            104   temp_soak       : ds 2 
+0048            105   time_soak       : ds 1
+0049            106   temp_refl       : ds 2
+004B            107   time_refl       : ds 1
+004C            108   pwm             : ds 1 ; controls output power to SSR
+004D            109   
+0030            110   dseg at 0x30
+0030            111   Count1ms        : ds 2 ; determines the number of 1ms increments that have passed 
+0032            112   seconds_elapsed  : DS 1
+0033            113   
+0033            114   
+002E            115   CSEG ;starts the absolute segment from that address
+002E            116   ; These 'EQU' must match the hardware wiring
+002E            117   LCD_RS          EQU P1.3
+002E            118   ;LCD_RW         EQU PX.X ; Not used in this code, connect the pin to GND
+002E            119   LCD_E           EQU P1.4
+002E            120   LCD_D4          EQU P0.0
+002E            121   LCD_D5          EQU P0.1
+002E            122   LCD_D6          EQU P0.2
+002E            123   LCD_D7          EQU P0.3
+002E            124   
+                126   	$LIST
+00E2            128   
+00E2            129   ; Flags that are used to control events 
+0000            130   BSEG 
+0000            131   mf              : dbit 1
+0001            132   IN_MENU_FLAG    : dbit 1
+0002            133   IN_OVEN_FLAG    : dbit 1
+0003            134   
                 547   $LIST
-                133   $LIST
-0352            135   
-0352            136   ; Messages to display on LCD when in Menu FSM
-0352 5265666C   137   LCD_defaultTop  : db 'Reflow Oven: ', 0
+                136   $LIST
+0352            138   
+0352            139   ; Messages to display on LCD when in Menu FSM
+0352 5265666C   140   LCD_defaultTop  : db 'Reflow Oven: ', 0
      6F77204F
      76656E3A
      2000
-0360 53746172   138   LCD_defaultBot  : db 'Start/Configure?', 0
+0360 53746172   141   LCD_defaultBot  : db 'Start/Configure?', 0
      742F436F
      6E666967
      7572653F
      00
-0371 536F616B   139   LCD_soakTime    : db 'Soak Time: ', 0
+0371 536F616B   142   LCD_soakTime    : db 'Soak Time: ', 0
      2054696D
      653A2000
-037D 536F616B   140   LCD_soakTemp    : db 'Soak Temp: ', 0
+037D 536F616B   143   LCD_soakTemp    : db 'Soak Temp: ', 0
      2054656D
      703A2000
-0389 5265666C   141   LCD_reflowTime  : db 'Refl Time: ', 0
+0389 5265666C   144   LCD_reflowTime  : db 'Refl Time: ', 0
      2054696D
      653A2000
-0395 5265666C   142   LCD_reflowTemp  : db 'Refl Temp: ', 0
+0395 5265666C   145   LCD_reflowTemp  : db 'Refl Temp: ', 0
      2054656D
      703A2000
-03A1 54455354   143   LCD_TEST        : db 'TEST MESSAGE ', 0
+03A1 54455354   146   LCD_TEST        : db 'TEST MESSAGE ', 0
      204D4553
      53414745
      2000
-03AF 20202020   144   LCD_clearLine   : db '                ', 0 ; put at end to clear line
+03AF 20202020   147   LCD_clearLine   : db '                ', 0 ; put at end to clear line
      20202020
      20202020
      20202020
      00
-03C0            145   
-03C0 50726568   146   preheatMessage  : db 'Preheat', 0
+03C0            148   
+03C0 50726568   149   preheatMessage  : db 'Preheat', 0
      65617400
-03C8 536F616B   147   soakMessage     : db 'Soak', 0
+03C8 536F616B   150   soakMessage     : db 'Soak', 0
      00
-03CD 5265666C   148   reflowMessage   : db 'Reflow', 0
+03CD 5265666C   151   reflowMessage   : db 'Reflow', 0
      6F7700
-03D4            149   
-03D4            150   ; Messages to display on LCD when in Oven Controller FSM
-03D4            151   
-03D4            152   ;---------------------------------;
-03D4            153   ; Routine to initialize the ISR   ;
-03D4            154   ; for timer 0                     ;
+03D4            152   
+03D4            153   ; Messages to display on LCD when in Oven Controller FSM
+03D4            154   
 03D4            155   ;---------------------------------;
-03D4            156   Timer0_Init:
-03D4 438E08     157            orl CKCON, #0b00001000 ; Input for timer 0 is sysclk/1 ; performs bit masking on CKON - Clock Control ; T0M = 1, timer 0 uses the system clock directly
-03D7 E589       158            mov a, TMOD
-03D9 54F0       159            anl a, #0xf0 ; 11110000 Clear the bits for timer 0
-03DB 4401       160            orl a, #0x01 ; 00000001 Configure timer 0 as 16-timer (M1M0 = 01 -> Mode 1: 16-bit Timer/Counter)
-03DD F589       161            mov TMOD, a
-03DF 758CF0     162            mov TH0, #high(TIMER0_RELOAD) ; 8051 works with 8 bits so the oepration T0 = TIMER0_RELOAD  (16 bits) is done by setting high byte then low byte (8x2)
-03E2 758A2C     163            mov TL0, #low (TIMER0_RELOAD)
-03E5            164            ; Enable the timer and interrupts
-03E5 D2A9       165       setb ET0  ; Enable timer 0 interrupt
-03E7 D28C       166       setb TR0  ; Start timer 0
-03E9 22         167            ret
-03EA            168   
-03EA            169   ;---------------------------------;
-03EA            170   ; Routine to initialize the ISR   ;
-03EA            171   ; for timer 2                     ;
+03D4            156   ; Routine to initialize the ISR   ;
+03D4            157   ; for timer 0                     ;
+03D4            158   ;---------------------------------;
+03D4            159   Timer0_Init:
+03D4 438E08     160            orl CKCON, #0b00001000 ; Input for timer 0 is sysclk/1 ; performs bit masking on CKON - Clock Control ; T0M = 1, timer 0 uses the system clock directly
+03D7 E589       161            mov a, TMOD
+03D9 54F0       162            anl a, #0xf0 ; 11110000 Clear the bits for timer 0
+03DB 4401       163            orl a, #0x01 ; 00000001 Configure timer 0 as 16-timer (M1M0 = 01 -> Mode 1: 16-bit Timer/Counter)
+03DD F589       164            mov TMOD, a
+03DF 758CF0     165            mov TH0, #high(TIMER0_RELOAD) ; 8051 works with 8 bits so the oepration T0 = TIMER0_RELOAD  (16 bits) is done by setting high byte then low byte (8x2)
+03E2 758A2C     166            mov TL0, #low (TIMER0_RELOAD)
+03E5            167            ; Enable the timer and interrupts
+03E5 D2A9       168       setb ET0  ; Enable timer 0 interrupt
+03E7 D28C       169       setb TR0  ; Start timer 0
+03E9 22         170            ret
+03EA            171   
 03EA            172   ;---------------------------------;
-03EA            173   Timer2_Init:
-03EA 75C800     174            mov T2CON, #0 ; Stop timer/counter.  Autoreload mode.
-03ED 75CDBF     175            mov TH2, #high(TIMER2_RELOAD)
-03F0 75CC28     176            mov TL2, #low(TIMER2_RELOAD)
-03F3            177            ; Set the reload value
-03F3 43C980     178            orl T2MOD, #0x80 ; Enable timer 2 autoreload
-03F6 75CBBF     179            mov RCMP2H, #high(TIMER2_RELOAD)
-03F9 75CA28     180            mov RCMP2L, #low(TIMER2_RELOAD)
-03FC            181            ; Init One millisecond interrupt counter.  It is a 16-bit variable made with two 8-bit parts
-03FC E4         182            clr a
-03FD F530       183            mov Count1ms+0, a
-03FF F531       184            mov Count1ms+1, a
-0401            185            ; Enable the timer and interrupts
-0401 439B80     186            orl EIE, #0x80 ; Enable timer 2 interrupt ET2=1
-0404 D2CA       187           setb TR2  ; Enable timer 2
-0406 22         188            ret
-0407            189   
-0407            190   Timer0_ISR:
-0407 32         191   reti
-0408            192   
-0408            193   ;---------------------------------;
-0408            194   ; ISR for timer 2                 ;
-0408            195   ;---------------------------------;
-0408            196   Timer2_ISR:
-0408 C2CF       197           clr TF2  ; Timer 2 doesn't clear TF2 automatically. Do it in the ISR.  It is bit addressable.
-040A B284       198           cpl P0.4 ; To check the interrupt rate with oscilloscope. It must be precisely a 1 ms pulse.
-040C            199   
-040C            200           ; The two registers used in the ISR must be saved in the stack
-040C C0E0       201           push acc
-040E C0D0       202           push psw
-0410            203   
-0410            204           ; Increment the 16-bit one mili second counter
-0410 0530       205           inc Count1ms+0    ; Increment the low 8-bits first
-0412 E530       206           mov a, Count1ms+0 ; If the low 8-bits overflow, then increment high 8-bits
-0414 7002       207           jnz Inc_done
-0416 0531       208           inc Count1ms+1
-0418            209           
-0418            210           Inc_done:
-0418            211           ; Check if one second has passed
-0418 E530       212            mov     a, Count1ms+0
-041A B4E810     213            cjne    a, #low(1000), Timer2_ISR_done ; Warning: this instruction changes the carry flag!
-041D E531       214            mov     a, Count1ms+1
-041F B4030B     215            cjne    a, #high(1000), Timer2_ISR_done         
-0422            216   
-0422            217           ; ; ---  1s has passed ----
-0422 E544       218           mov a, OVEN_STATE
-0424 2401       219           ADD A, #1
-0426 F544       220           mov OVEN_STATE, a
-0428            221   
-0428            222           ; reset seconds ms counter
-0428 E4         223           clr a
-0429 F530       224           mov Count1ms+0, a
-042B F531       225           mov Count1ms+1, a
-042D            226           
-042D            227           Timer2_ISR_done:
-042D D0D0       228           pop psw
-042F D0E0       229            pop acc
-0431 32         230           reti
-0432            231   
-0432            232   Initilize_All:
-0432            233           ; Configure pins to be bi-directional
-0432 75AC00     234           mov      P3M1,#0x00
-0435 75AD00     235            mov     P3M2,#0x00
-0438 75B300     236            mov     P1M1,#0x00
-043B 75B400     237            mov     P1M2,#0x00
-043E 75B100     238            mov     P0M1,#0x00
-0441 75B200     239            mov     P0M2,#0x00
-0444            240   
-0444 D296       241           setb    CHANGE_MENU_PIN
-0446 D295       242           setb    START_PIN
-0448            243   
-0448 D2AF       244           setb    EA   ; Enable Global interrupts
-044A            245   
-044A            246   
-044A            247           ; Since the reset button bounces, we need to wait a bit before
-044A            248           ; sending messages, otherwise we risk displaying gibberish!
-044A C002       249            push AR2
-044C 7A32       249            mov R2, #50
-044E 120038     249            lcall ?Wait_Milli_Seconds
-0451 D002       249            pop AR2
-0453            250   
-0453            251           ; Now we can proceed with the configuration of the serial port
-0453 438E10     252           orl      CKCON, #0x10 ; CLK is the input for timer 1
-0456 438780     253           orl      PCON, #0x80  ; Bit SMOD=1, double baud rate
-0459 759852     254           mov      SCON, #0x52
-045C 53C4DF     255           anl      T3CON, #0b11011111
-045F 53890F     256           anl      TMOD, #0x0F ; Clear the configuration bits for timer 1
-0462 438920     257           orl      TMOD, #0x20 ; Timer 1 Mode 2
-0465 758DF7     258           mov      TH1, #TIMER1_RELOAD
-0468 D28E       259           setb    TR1
-046A            260                           
-046A            261           ; Using timer 0 for delay functions.  Initialize here:
-046A C28C       262            clr     TR0         ; Stop timer 0
-046C 438E08     263            orl     CKCON,#0x08 ; CLK is the input for timer 0
-046F 5389F0     264            anl     TMOD,#0xF0  ; Clear the configuration bits for timer 0
-0472 438901     265            orl     TMOD,#0x01  ; Timer 0 in Mode 1: 16-bit timer
-0475            266            
-0475            267            ; Initialize the pins used by the ADC (P1.1, P1.7) as input.
-0475 43B382     268            orl     P1M1, #0b10000010
-0478 53B47D     269            anl     P1M2, #0b01111101
-047B            270            
-047B            271            ; Initialize and start the ADC:
-047B 53E8F0     272            anl     ADCCON0, #0xF0
-047E 43E807     273            orl     ADCCON0, #0x07 ; Select channel 7
-0481            274            
-0481            275           ; AINDIDS select if some pins are analog inputs or digital I/O:
-0481 75F600     276            mov     AINDIDS, #0x00 ; Disable all analog inputs
-0484 43F681     277            orl     AINDIDS, #0b10000001 ; Activate AIN0 and AIN7 analog inputs
-0487 43E101     278            orl     ADCCON1, #0x01 ; Enable ADC
-048A            279   
-048A            280           ; Menu Configuration
-048A C201       281           clr     IN_MENU_FLAG
-048C C202       282           clr     IN_OVEN_FLAG
-048E 7405       283           mov     a, #5
-0490 F545       284           mov     MENU_STATE, a ; set menu state to 0 
-0492            285   
-0492 754680     286           mov     temp_soak, #0x80
-0495 754760     287           mov     time_soak, #0x60
-0498 754890     288           mov     temp_refl, #0x90
-049B 754901     289           mov     time_refl, #0x1
-049E            290   
-049E            291           ; Oven configuration
-049E 754400     292           mov OVEN_STATE, #OVEN_STATE_PREHEAT
-04A1            293           
-04A1            294           ; note that above is pasted from lab 3 - AL, need to add setup code from lab 2
-04A1 22         295           ret
-04A2            296           
-04A2            297   ;Button nested logic -> we should be constantly checking in the main loop for a stop (i.e the stop should be instantaneous)
-04A2            298           ;->Buttons should allow for adjustment of soak temp, soak time, reflow temp, reflow time (Ui should be designed to make all these visible and clear)
-04A2            299           ;->Start button should either be used only for start or used for start/pause (different from a stop
-04A2            300           ;Try to use button logic given in lab 2 to stay consistent
-04A2            301           ; Menu Logic (will keep UI clean)
-04A2            302           ; Button to switch states - Changes a state variable (4 states -> 2 bits) (or two flags)
-04A2            303           ; Two buttons to go up or down a value
-04A2            304           ; One button to stop <---- safety feature make this button only STOP
-04A2            305           
-04A2            306           ; ;pseudo code lol
-04A2            307           ; jb [button], [branch]
-04A2            308           ; Wait_Milli_Seconds(#50)
-04A2            309           ; jb [button], [branch]
-04A2            310           ; jnb [button], $
-04A2            311           ; ljmp [display??]
-04A2            312   
-04A2            313   ; Push button macro - It does not work :(
-                314   Inc_Menu_Variable MAC
-                315           jb %0, %2
-                316           Wait_Milli_Seconds(#50) ; de-bounce
-                317           jb %0, %2
-                318           jnb %0, $
-                319           ; successful press registered
-                320           inc %1 ; increment param #1
-                321   ENDMAC
-04A2            322   
-04A2            323   STOP_PROCESS:
-04A2            324   ; Turn everything off
-04A2 02068E     325           ljmp PROGRAM_ENTRY
-04A5            326   
-04A5            327   OVEN_FSM:
-04A5            328           enterOvenStateCheck:
-04A5 E544       329           mov a, OVEN_STATE
-04A7            330   
-04A7            331           ovenFSM_preheat:
-04A7 B4004D     332           cjne a, #OVEN_STATE_PREHEAT, ovenFSM_soak
-04AA C0E0       333            push acc
-04AC 7401       333            mov a, #1
-04AE 14         333            dec a
-04AF 1200C7     333            lcall ?Set_Cursor_1 ; Select column and row
-04B2 D0E0       333            pop acc
-04B4 C083       334            push dph
-04B6 C082       334            push dpl
-04B8 C0E0       334            push acc
-04BA 9003C0     334            mov dptr, #preheatMessage
-04BD 1200BA     334            lcall ?Send_Constant_String
-04C0 D0E0       334            pop acc
-04C2 D082       334            pop dpl
-04C4 D083       334            pop dph
-04C6 C083       335            push dph
-04C8 C082       335            push dpl
-04CA C0E0       335            push acc
-04CC 9003AF     335            mov dptr, #LCD_clearLine
-04CF 1200BA     335            lcall ?Send_Constant_String
-04D2 D0E0       335            pop acc
-04D4 D082       335            pop dpl
-04D6 D083       335            pop dph
-04D8 C0E0       336            push acc
-04DA 7401       336            mov a, #1
-04DC 14         336            dec a
-04DD 1200C5     336            lcall ?Set_Cursor_2 ; Select column and row
-04E0 D0E0       336            pop acc
-04E2 C083       337            push dph
-04E4 C082       337            push dpl
-04E6 C0E0       337            push acc
-04E8 9003AF     337            mov dptr, #LCD_clearLine
-04EB 1200BA     337            lcall ?Send_Constant_String
-04EE D0E0       337            pop acc
-04F0 D082       337            pop dpl
-04F2 D083       337            pop dph
-04F4 02059D     338           ljmp oven_FSM_done
-04F7            339   
-04F7            340           ovenFSM_soak:
-04F7 B4014D     341           cjne a, #OVEN_STATE_SOAK, ovenFSM_reflow
-04FA C0E0       342            push acc
-04FC 7401       342            mov a, #1
-04FE 14         342            dec a
-04FF 1200C7     342            lcall ?Set_Cursor_1 ; Select column and row
-0502 D0E0       342            pop acc
-0504 C083       343            push dph
-0506 C082       343            push dpl
-0508 C0E0       343            push acc
-050A 9003C8     343            mov dptr, #soakMessage
-050D 1200BA     343            lcall ?Send_Constant_String
-0510 D0E0       343            pop acc
-0512 D082       343            pop dpl
-0514 D083       343            pop dph
-0516 C083       344            push dph
-0518 C082       344            push dpl
-051A C0E0       344            push acc
-051C 9003AF     344            mov dptr, #LCD_clearLine
-051F 1200BA     344            lcall ?Send_Constant_String
-0522 D0E0       344            pop acc
-0524 D082       344            pop dpl
-0526 D083       344            pop dph
-0528 C0E0       345            push acc
-052A 7401       345            mov a, #1
-052C 14         345            dec a
-052D 1200C5     345            lcall ?Set_Cursor_2 ; Select column and row
-0530 D0E0       345            pop acc
-0532 C083       346            push dph
-0534 C082       346            push dpl
-0536 C0E0       346            push acc
-0538 9003AF     346            mov dptr, #LCD_clearLine
-053B 1200BA     346            lcall ?Send_Constant_String
-053E D0E0       346            pop acc
-0540 D082       346            pop dpl
-0542 D083       346            pop dph
-0544 02059D     347           ljmp oven_FSM_done
-0547            348   
-0547            349           ovenFSM_reflow:
-0547 B4024D     350           cjne a, #OVEN_STATE_REFLOW, ovenFSM_exit
-054A C0E0       351            push acc
-054C 7401       351            mov a, #1
-054E 14         351            dec a
-054F 1200C7     351            lcall ?Set_Cursor_1 ; Select column and row
-0552 D0E0       351            pop acc
-0554 C083       352            push dph
-0556 C082       352            push dpl
-0558 C0E0       352            push acc
-055A 9003CD     352            mov dptr, #reflowMessage
-055D 1200BA     352            lcall ?Send_Constant_String
-0560 D0E0       352            pop acc
-0562 D082       352            pop dpl
-0564 D083       352            pop dph
-0566 C083       353            push dph
-0568 C082       353            push dpl
-056A C0E0       353            push acc
-056C 9003AF     353            mov dptr, #LCD_clearLine
-056F 1200BA     353            lcall ?Send_Constant_String
-0572 D0E0       353            pop acc
-0574 D082       353            pop dpl
-0576 D083       353            pop dph
-0578 C0E0       354            push acc
-057A 7401       354            mov a, #1
-057C 14         354            dec a
-057D 1200C5     354            lcall ?Set_Cursor_2 ; Select column and row
-0580 D0E0       354            pop acc
-0582 C083       355            push dph
-0584 C082       355            push dpl
-0586 C0E0       355            push acc
-0588 9003AF     355            mov dptr, #LCD_clearLine
-058B 1200BA     355            lcall ?Send_Constant_String
-058E D0E0       355            pop acc
-0590 D082       355            pop dpl
-0592 D083       355            pop dph
-0594 02059D     356           ljmp oven_FSM_done
-0597            357   
-0597            358           ovenFSM_exit:
-0597 754400     359           mov OVEN_STATE, #OVEN_STATE_PREHEAT
-059A 02059D     360           ljmp oven_FSM_done
-059D            361           
-059D            362           oven_FSM_done:
-059D 0204A5     363           ljmp OVEN_FSM
-05A0 22         364           ret
-05A1            365   
-05A1            366   MENU_FSM:        
-05A1 209614     367            jb CHANGE_MENU_PIN, enterMenuStateCheck
-05A4 C002       368            push AR2
-05A6 7A32       368            mov R2, #50
-05A8 120038     368            lcall ?Wait_Milli_Seconds
-05AB D002       368            pop AR2               ; debounce delay
-05AD 209608     369            jb CHANGE_MENU_PIN, enterMenuStateCheck  ; 
-05B0 3096FD     370            jnb CHANGE_MENU_PIN, $        ; wait for release
-05B3            371   
-05B3 E545       372           mov a, MENU_STATE
-05B5 04         373           inc a
-05B6 F545       374           mov MENU_STATE, a ; line is doubled for clarity - George
-05B8            375           
-05B8            376           enterMenuStateCheck:
-05B8 E545       377           mov a, MENU_STATE
-05BA            378   
-05BA            379           menuFSM_configSoak:
-05BA B4005F     380           cjne a, #MENU_STATE_SOAK, menuFSM_configReflow
-05BD            381           ; State - Config Soak
-05BD            382           ; Inc_Menu_Variable (INC_TEMP_PIN, temp_soak, noSoakTempInc)
-05BD            383           ; noSoakTempInc:
-05BD            384           ; Inc_Menu_Variable (INC_TIME_PIN, time_soak, noSoaktimeInc)
-05BD            385           ; noSoaktimeInc:
-05BD            386           ; display Soak Menu Options
-05BD C0E0       387            push acc
-05BF 7401       387            mov a, #1
-05C1 14         387            dec a
-05C2 1200C7     387            lcall ?Set_Cursor_1 ; Select column and row
-05C5 D0E0       387            pop acc
-05C7 C083       388            push dph
-05C9 C082       388            push dpl
-05CB C0E0       388            push acc
-05CD 90037D     388            mov dptr, #LCD_soakTemp
-05D0 1200BA     388            lcall ?Send_Constant_String
-05D3 D0E0       388            pop acc
-05D5 D082       388            pop dpl
-05D7 D083       388            pop dph
-05D9 C000       389            push ar0
-05DB A846       389            mov r0, temp_soak
-05DD 1200CC     389            lcall ?Display_BCD
-05E0 D000       389            pop ar0
-05E2 C0E0       390            push acc
-05E4 7401       390            mov a, #1
-05E6 14         390            dec a
-05E7 1200C5     390            lcall ?Set_Cursor_2 ; Select column and row
-05EA D0E0       390            pop acc
-05EC C083       391            push dph
-05EE C082       391            push dpl
-05F0 C0E0       391            push acc
-05F2 900371     391            mov dptr, #LCD_soakTime
-05F5 1200BA     391            lcall ?Send_Constant_String
-05F8 D0E0       391            pop acc
-05FA D082       391            pop dpl
-05FC D083       391            pop dph
-05FE C000       392            push ar0
-0600 A847       392            mov r0, time_soak
-0602 1200CC     392            lcall ?Display_BCD
-0605 D000       392            pop ar0
-0607 C083       393            push dph
-0609 C082       393            push dpl
-060B C0E0       393            push acc
-060D 9003AF     393            mov dptr, #LCD_clearLine
-0610 1200BA     393            lcall ?Send_Constant_String
-0613 D0E0       393            pop acc
-0615 D082       393            pop dpl
-0617 D083       393            pop dph
-0619 020684     394           ljmp menu_FSM_done
-061C            395   
-061C            396           menuFSM_configReflow:
-061C B4015F     397           cjne a, #MENU_STATE_REFLOW, reset_menu_state
-061F            398           ; State - Config Reflow
-061F            399           ; Inc_Menu_Variable (INC_TEMP_PIN, temp_refl, noReflowTempInc)
-061F            400           ; noReflowTempInc:
-061F            401           ; Inc_Menu_Variable (INC_TIME_PIN, time_refl, noReflowTimeInc)
-061F            402           ; noReflowTimeInc:
-061F            403           ; display Reflow Menu Options
-061F C0E0       404            push acc
-0621 7401       404            mov a, #1
-0623 14         404            dec a
-0624 1200C7     404            lcall ?Set_Cursor_1 ; Select column and row
-0627 D0E0       404            pop acc
-0629 C083       405            push dph
-062B C082       405            push dpl
-062D C0E0       405            push acc
-062F 900395     405            mov dptr, #LCD_reflowTemp
-0632 1200BA     405            lcall ?Send_Constant_String
-0635 D0E0       405            pop acc
-0637 D082       405            pop dpl
-0639 D083       405            pop dph
-063B C000       406            push ar0
-063D A848       406            mov r0, temp_refl
-063F 1200CC     406            lcall ?Display_BCD
-0642 D000       406            pop ar0
-0644 C0E0       407            push acc
-0646 7401       407            mov a, #1
-0648 14         407            dec a
-0649 1200C5     407            lcall ?Set_Cursor_2 ; Select column and row
-064C D0E0       407            pop acc
-064E C083       408            push dph
-0650 C082       408            push dpl
-0652 C0E0       408            push acc
-0654 900389     408            mov dptr, #LCD_reflowTime
-0657 1200BA     408            lcall ?Send_Constant_String
-065A D0E0       408            pop acc
-065C D082       408            pop dpl
-065E D083       408            pop dph
-0660 C000       409            push ar0
-0662 A849       409            mov r0, time_refl
-0664 1200CC     409            lcall ?Display_BCD
-0667 D000       409            pop ar0
-0669 C083       410            push dph
-066B C082       410            push dpl
-066D C0E0       410            push acc
-066F 9003AF     410            mov dptr, #LCD_clearLine
-0672 1200BA     410            lcall ?Send_Constant_String
-0675 D0E0       410            pop acc
-0677 D082       410            pop dpl
-0679 D083       410            pop dph
-067B 020684     411           ljmp menu_FSM_done
-067E            412   
-067E            413           reset_menu_state: ; sets menu state variable to 0
-067E 754500     414           mov MENU_STATE, #MENU_STATE_SOAK
-0681 020684     415           ljmp menu_FSM_done
-0684            416   
-0684            417           menu_FSM_done:
-0684 22         418           ret
-0685            419   
-0685            420   main_program:
-0685            421           ; George
-0685 75817F     422           mov sp, #0x7f
-0688 120432     423           lcall Initilize_All
-068B 120087     424           lcall LCD_4BIT
-068E            425   
-068E            426           ; Default display - 
-068E            427           ; Reflow oven controller 
-068E            428           ; (Start or Configure?)
-068E            429           PROGRAM_ENTRY:
-068E C0E0       430            push acc
-0690 7401       430            mov a, #1
-0692 14         430            dec a
-0693 1200C7     430            lcall ?Set_Cursor_1 ; Select column and row
-0696 D0E0       430            pop acc
-0698 C083       431            push dph
-069A C082       431            push dpl
-069C C0E0       431            push acc
-069E 900352     431            mov dptr, #LCD_defaultTop
-06A1 1200BA     431            lcall ?Send_Constant_String
-06A4 D0E0       431            pop acc
-06A6 D082       431            pop dpl
-06A8 D083       431            pop dph
-06AA C0E0       432            push acc
-06AC 7401       432            mov a, #1
-06AE 14         432            dec a
-06AF 1200C5     432            lcall ?Set_Cursor_2 ; Select column and row
-06B2 D0E0       432            pop acc
-06B4 C083       433            push dph
-06B6 C082       433            push dpl
-06B8 C0E0       433            push acc
-06BA 900360     433            mov dptr, #LCD_defaultBot
-06BD 1200BA     433            lcall ?Send_Constant_String
-06C0 D0E0       433            pop acc
-06C2 D082       433            pop dpl
-06C4 D083       433            pop dph
-06C6            434   
-06C6            435           checkStartButton: ; assumed negative logic - used a label for an easy ljmp in the future
-06C6 209512     436           jb START_PIN, noStartButtonPress
-06C9 C002       437            push AR2
-06CB 7A32       437            mov R2, #50
-06CD 120038     437            lcall ?Wait_Milli_Seconds
-06D0 D002       437            pop AR2
-06D2 209506     438           jb START_PIN, noStartButtonPress
-06D5 3095FD     439           jnb START_PIN, $
-06D8 0206FC     440           ljmp enter_oven_fsm ; successful button press, enter oven FSM   
-06DB            441   
-06DB            442           noStartButtonPress:
-06DB            443           ; if the 'IN_MENU' flag is set, always enter into the menu FSM, this is so that the menu FSM can always be entered
-06DB            444           ; creates an infinite loop that will always display menu once entered - broken if START button pressed
-06DB 300106     445           jnb IN_MENU_FLAG, checkMenuButtonPress
-06DE 1205A1     446           lcall MENU_FSM 
-06E1 0206C6     447           ljmp checkStartButton
-06E4            448   
-06E4            449           checkMenuButtonPress:
-06E4            450           ; check for enter menu button press (reusing increment menu pin)
-06E4 209612     451           jb CHANGE_MENU_PIN, noMenuButtonPress
-06E7 C002       452            push AR2
-06E9 7A32       452            mov R2, #50
-06EB 120038     452            lcall ?Wait_Milli_Seconds
-06EE D002       452            pop AR2
-06F0 209606     453           jb CHANGE_MENU_PIN, noMenuButtonPress
-06F3 3096FD     454           jnb CHANGE_MENU_PIN, $
-06F6            455           ; setb IN_MENU_FLAG; successful button press, enter menu FSM loop ; - THIS LINE CAUSES THE BUG
-06F6 020709     456           ljmp setMenuFlag ; this isn't executing...
-06F9            457           
-06F9            458           noMenuButtonPress:
-06F9 0206C6     459           ljmp checkStartButton ; this line does not execute if ljmp setMenuFlag is there?!?!?
-06FC            460   
-06FC            461           enter_oven_fsm:
-06FC C201       462           clr IN_MENU_FLAG ; No longer in menu
-06FE D202       463           setb IN_OVEN_FLAG
-0700 1203EA     464           lcall Timer2_Init ; breaks things
-0703 1204A5     465           lcall OVEN_FSM ; will call STOP_PROCESS which loops back to the entry point
-0706 1204A2     466           lcall STOP_PROCESS ; added for safety
-0709            467           
-0709            468           setMenuFlag:
-0709 D201       469           setb IN_MENU_FLAG
-070B 0206C6     470           ljmp checkStartButton
-070E            471   
-070E            472           program_end:
-070E 020685     473           ljmp main_program
-0711            474   EN
+03EA            173   ; Routine to initialize the ISR   ;
+03EA            174   ; for timer 2                     ;
+03EA            175   ;---------------------------------;
+03EA            176   Timer2_Init:
+03EA 75C800     177            mov T2CON, #0 ; Stop timer/counter.  Autoreload mode.
+03ED 75CDBF     178            mov TH2, #high(TIMER2_RELOAD)
+03F0 75CC28     179            mov TL2, #low(TIMER2_RELOAD)
+03F3            180            ; Set the reload value
+03F3 43C980     181            orl T2MOD, #0x80 ; Enable timer 2 autoreload
+03F6 75CBBF     182            mov RCMP2H, #high(TIMER2_RELOAD)
+03F9 75CA28     183            mov RCMP2L, #low(TIMER2_RELOAD)
+03FC            184            ; Init One millisecond interrupt counter.  It is a 16-bit variable made with two 8-bit parts
+03FC E4         185            clr a
+03FD F530       186            mov Count1ms+0, a
+03FF F531       187            mov Count1ms+1, a
+0401            188            ; Enable the timer and interrupts
+0401 439B80     189            orl EIE, #0x80 ; Enable timer 2 interrupt ET2=1
+0404 D2CA       190           setb TR2  ; Enable timer 2
+0406 22         191            ret
+0407            192   
+0407            193   Timer0_ISR:
+0407 32         194   reti
+0408            195   
+0408            196   ;---------------------------------;
+0408            197   ; ISR for timer 2                 ;
+0408            198   ;---------------------------------;
+0408            199   Timer2_ISR:
+0408 C2CF       200           clr TF2  ; Timer 2 doesn't clear TF2 automatically. Do it in the ISR.  It is bit addressable.
+040A B284       201           cpl P0.4 ; To check the interrupt rate with oscilloscope. It must be precisely a 1 ms pulse.
+040C            202   
+040C            203           ; The two registers used in the ISR must be saved in the stack
+040C C0E0       204           push acc
+040E C0D0       205           push psw
+0410            206   
+0410            207           ; Increment the 16-bit one mili second counter
+0410 0530       208           inc Count1ms+0    ; Increment the low 8-bits first
+0412 E530       209           mov a, Count1ms+0 ; If the low 8-bits overflow, then increment high 8-bits
+0414 7002       210           jnz Inc_done
+0416 0531       211           inc Count1ms+1
+0418            212           
+0418            213           Inc_done:
+0418            214           ; Check if one second has passed
+0418 E530       215            mov     a, Count1ms+0
+041A B4E810     216            cjne    a, #low(1000), Timer2_ISR_done ; Warning: this instruction changes the carry flag!
+041D E531       217            mov     a, Count1ms+1
+041F B4030B     218            cjne    a, #high(1000), Timer2_ISR_done         
+0422            219   
+0422            220           ; ; ---  1s has passed ----
+0422            221           ; mov a, OVEN_STATE
+0422            222           ; add A, #1
+0422            223           ; mov OVEN_STATE, a
+0422            224   
+0422 E532       225           mov a, seconds_elapsed
+0424 2401       226           add A, #1
+0426 F532       227           mov seconds_elapsed, a
+0428            228   
+0428            229           ; reset seconds ms counter
+0428 E4         230           clr a
+0429 F530       231           mov Count1ms+0, a
+042B F531       232           mov Count1ms+1, a
+042D            233           
+042D            234           Timer2_ISR_done:
+042D D0D0       235           pop psw
+042F D0E0       236            pop acc
+0431 32         237           reti
+0432            238   
+0432            239   Initilize_All:
+0432            240           ; Configure pins to be bi-directional
+0432 75AC00     241           mov      P3M1,#0x00
+0435 75AD00     242            mov     P3M2,#0x00
+0438 75B300     243            mov     P1M1,#0x00
+043B 75B400     244            mov     P1M2,#0x00
+043E 75B100     245            mov     P0M1,#0x00
+0441 75B200     246            mov     P0M2,#0x00
+0444            247   
+0444 D296       248           setb    CHANGE_MENU_PIN
+0446 D295       249           setb    START_PIN
+0448            250   
+0448 D2AF       251           setb    EA   ; Enable Global interrupts
+044A            252   
+044A            253   
+044A            254           ; Since the reset button bounces, we need to wait a bit before
+044A            255           ; sending messages, otherwise we risk displaying gibberish!
+044A C002       256            push AR2
+044C 7A32       256            mov R2, #50
+044E 120038     256            lcall ?Wait_Milli_Seconds
+0451 D002       256            pop AR2
+0453            257   
+0453            258           ; Now we can proceed with the configuration of the serial port
+0453 438E10     259           orl      CKCON, #0x10 ; CLK is the input for timer 1
+0456 438780     260           orl      PCON, #0x80  ; Bit SMOD=1, double baud rate
+0459 759852     261           mov      SCON, #0x52
+045C 53C4DF     262           anl      T3CON, #0b11011111
+045F 53890F     263           anl      TMOD, #0x0F ; Clear the configuration bits for timer 1
+0462 438920     264           orl      TMOD, #0x20 ; Timer 1 Mode 2
+0465 758DF7     265           mov      TH1, #TIMER1_RELOAD
+0468 D28E       266           setb    TR1
+046A            267                           
+046A            268           ; Using timer 0 for delay functions.  Initialize here:
+046A C28C       269            clr     TR0         ; Stop timer 0
+046C 438E08     270            orl     CKCON,#0x08 ; CLK is the input for timer 0
+046F 5389F0     271            anl     TMOD,#0xF0  ; Clear the configuration bits for timer 0
+0472 438901     272            orl     TMOD,#0x01  ; Timer 0 in Mode 1: 16-bit timer
+0475            273            
+0475            274            ; Initialize the pins used by the ADC (P1.1, P1.7) as input.
+0475 43B382     275            orl     P1M1, #0b10000010
+0478 53B47D     276            anl     P1M2, #0b01111101
+047B            277            
+047B            278            ; Initialize and start the ADC:
+047B 53E8F0     279            anl     ADCCON0, #0xF0
+047E 43E807     280            orl     ADCCON0, #0x07 ; Select channel 7
+0481            281            
+0481            282           ; AINDIDS select if some pins are analog inputs or digital I/O:
+0481 75F600     283            mov     AINDIDS, #0x00 ; Disable all analog inputs
+0484 43F681     284            orl     AINDIDS, #0b10000001 ; Activate AIN0 and AIN7 analog inputs
+0487 43E101     285            orl     ADCCON1, #0x01 ; Enable ADC
+048A            286   
+048A            287           ; Menu Configuration
+048A C201       288           clr     IN_MENU_FLAG
+048C C202       289           clr     IN_OVEN_FLAG
+048E 7405       290           mov     a, #5
+0490 F545       291           mov     MENU_STATE, a ; set menu state to 0 
+0492            292   
+0492            293           ; mov     temp_soak, #0x250
+0492 754650     294           mov     temp_soak+0, #low(0x250)
+0495 754702     295           mov     temp_soak+1, #high(0x250)
+0498 754805     296           mov     time_soak, #0x5
+049B 754990     297           mov     temp_refl, #0x90
+049E 754B01     298           mov     time_refl, #0x1
+04A1            299   
+04A1            300           ; incrementing BCD values greater than 0x99: 
+04A1            301           ; mov a, temp_soak+0
+04A1            302           ; add a, #5
+04A1            303           ; mov temp_soak+0, a
+04A1            304           ; jnz tempSoakIncDone
+04A1            305           ; mov a, temp_soak+1
+04A1            306           ; add a, #5
+04A1            307           ; mov temp_soak+1, a
+04A1            308           ; tempSoakIncDone:
+04A1            309   
+04A1            310           ; Oven configuration
+04A1 754400     311           mov OVEN_STATE, #OVEN_STATE_PREHEAT
+04A4 753200     312           mov seconds_elapsed, #0
+04A7            313           
+04A7            314           ; note that above is pasted from lab 3 - AL, need to add setup code from lab 2
+04A7 22         315           ret
+04A8            316           
+04A8            317   ;Button nested logic -> we should be constantly checking in the main loop for a stop (i.e the stop should be instantaneous)
+04A8            318           ;->Buttons should allow for adjustment of soak temp, soak time, reflow temp, reflow time (Ui should be designed to make all these visible and clear)
+04A8            319           ;->Start button should either be used only for start or used for start/pause (different from a stop
+04A8            320           ;Try to use button logic given in lab 2 to stay consistent
+04A8            321           ; Menu Logic (will keep UI clean)
+04A8            322           ; Button to switch states - Changes a state variable (4 states -> 2 bits) (or two flags)
+04A8            323           ; Two buttons to go up or down a value
+04A8            324           ; One button to stop <---- safety feature make this button only STOP
+04A8            325           
+04A8            326           ; ;pseudo code lol
+04A8            327           ; jb [button], [branch]
+04A8            328           ; Wait_Milli_Seconds(#50)
+04A8            329           ; jb [button], [branch]
+04A8            330           ; jnb [button], $
+04A8            331           ; ljmp [display??]
+04A8            332   
+04A8            333   ; Push button macro - It does not work :(
+                334   Inc_Menu_Variable MAC
+                335           jb %0, %2
+                336           Wait_Milli_Seconds(#50) ; de-bounce
+                337           jb %0, %2
+                338           jnb %0, $
+                339           ; successful press registered
+                340           inc %1 ; increment param #1
+                341   ENDMAC
+04A8            342   
+04A8            343   ; ; 3 values : current time elapsed in seconds, 
+04A8            344   ; FSM_transition_check MAC
+04A8            345   ;         jb %0, %2
+04A8            346   ;         Wait_Milli_Seconds(#50) ; de-bounce
+04A8            347   ;         jb %0, %2
+04A8            348   ;         jnb %0, $
+04A8            349   ;         ; successful press registered
+04A8            350   ;         inc %1 ; increment param #1
+04A8            351   ; ENDMAC
+04A8            352   
+04A8            353   STOP_PROCESS:
+04A8            354   ; Turn everything off
+04A8 02071D     355           ljmp PROGRAM_ENTRY
+04AB            356   
+04AB            357   ; Precondition: Has temperature stored in x
+04AB            358   OVEN_FSM:
+04AB            359           ; check stop button press
+04AB            360           ; jb STOP_PIN, enterOvenStateCheck
+04AB            361            ; Wait_Milli_Seconds(#50)             ; debounce delay
+04AB            362            ; jb STOP_PIN, enterOvenStateCheck  ; 
+04AB            363            ; jnb STOP_PIN, $        ; wait for release
+04AB            364           ; lcall STOP_PROCESS ; 
+04AB            365   
+04AB            366           ; check oven state if stop button is not pressed
+04AB            367           enterOvenStateCheck:
+04AB E544       368           mov a, OVEN_STATE
+04AD            369   
+04AD            370           ; MOV x+0, #low(0x260)
+04AD            371           ; MOV x+1, #high(0x260)
+04AD            372           ; MOV x+2, #0
+04AD            373           ; MOV x+3, #0
+04AD            374   
+04AD            375           ovenFSM_preheat:
+04AD B40075     376           cjne a, #OVEN_STATE_PREHEAT, ovenFSM_soak
+04B0 C0E0       377            push acc
+04B2 7401       377            mov a, #1
+04B4 14         377            dec a
+04B5 1200C7     377            lcall ?Set_Cursor_1 ; Select column and row
+04B8 D0E0       377            pop acc
+04BA C083       378            push dph
+04BC C082       378            push dpl
+04BE C0E0       378            push acc
+04C0 9003C0     378            mov dptr, #preheatMessage
+04C3 1200BA     378            lcall ?Send_Constant_String
+04C6 D0E0       378            pop acc
+04C8 D082       378            pop dpl
+04CA D083       378            pop dph
+04CC C083       379            push dph
+04CE C082       379            push dpl
+04D0 C0E0       379            push acc
+04D2 9003AF     379            mov dptr, #LCD_clearLine
+04D5 1200BA     379            lcall ?Send_Constant_String
+04D8 D0E0       379            pop acc
+04DA D082       379            pop dpl
+04DC D083       379            pop dph
+04DE C0E0       380            push acc
+04E0 7401       380            mov a, #1
+04E2 14         380            dec a
+04E3 1200C5     380            lcall ?Set_Cursor_2 ; Select column and row
+04E6 D0E0       380            pop acc
+04E8 C083       381            push dph
+04EA C082       381            push dpl
+04EC C0E0       381            push acc
+04EE 9003AF     381            mov dptr, #LCD_clearLine
+04F1 1200BA     381            lcall ?Send_Constant_String
+04F4 D0E0       381            pop acc
+04F6 D082       381            pop dpl
+04F8 D083       381            pop dph
+04FA C0E0       382            push acc
+04FC 7401       382            mov a, #1
+04FE 14         382            dec a
+04FF 1200C5     382            lcall ?Set_Cursor_2 ; Select column and row
+0502 D0E0       382            pop acc
+0504 C000       383            push ar0
+0506 A832       383            mov r0, seconds_elapsed
+0508 1200CC     383            lcall ?Display_BCD
+050B D000       383            pop ar0
+050D            384   
+050D            385           ; check if temp >= soak temp
+050D 753446     386            mov y+0, #low (temp_soak % 0x10000) 
+0510 753500     386            mov y+1, #high(temp_soak % 0x10000) 
+0513 753600     386            mov y+2, #low (temp_soak / 0x10000) 
+0516 753700     386            mov y+3, #high(temp_soak / 0x10000) 
+0519 120248     387           lcall x_gteq_y
+051C 300003     388           jnb mf, noChange_preheatState
+051F 754401     389           mov OVEN_STATE, #OVEN_STATE_SOAK
+0522            390           noChange_preheatState:
+0522 0205FF     391           ljmp oven_FSM_done
+0525            392   
+0525            393           ovenFSM_soak:
+0525 B4016B     394           cjne a, #OVEN_STATE_SOAK, ovenFSM_reflow
+0528 C0E0       395            push acc
+052A 7401       395            mov a, #1
+052C 14         395            dec a
+052D 1200C7     395            lcall ?Set_Cursor_1 ; Select column and row
+0530 D0E0       395            pop acc
+0532 C083       396            push dph
+0534 C082       396            push dpl
+0536 C0E0       396            push acc
+0538 9003C8     396            mov dptr, #soakMessage
+053B 1200BA     396            lcall ?Send_Constant_String
+053E D0E0       396            pop acc
+0540 D082       396            pop dpl
+0542 D083       396            pop dph
+0544 C083       397            push dph
+0546 C082       397            push dpl
+0548 C0E0       397            push acc
+054A 9003AF     397            mov dptr, #LCD_clearLine
+054D 1200BA     397            lcall ?Send_Constant_String
+0550 D0E0       397            pop acc
+0552 D082       397            pop dpl
+0554 D083       397            pop dph
+0556 C0E0       398            push acc
+0558 7401       398            mov a, #1
+055A 14         398            dec a
+055B 1200C5     398            lcall ?Set_Cursor_2 ; Select column and row
+055E D0E0       398            pop acc
+0560 C083       399            push dph
+0562 C082       399            push dpl
+0564 C0E0       399            push acc
+0566 9003AF     399            mov dptr, #LCD_clearLine
+0569 1200BA     399            lcall ?Send_Constant_String
+056C D0E0       399            pop acc
+056E D082       399            pop dpl
+0570 D083       399            pop dph
+0572 C0E0       400            push acc
+0574 7401       400            mov a, #1
+0576 14         400            dec a
+0577 1200C5     400            lcall ?Set_Cursor_2 ; Select column and row
+057A D0E0       400            pop acc
+057C C000       401            push ar0
+057E A832       401            mov r0, seconds_elapsed
+0580 1200CC     401            lcall ?Display_BCD
+0583 D000       401            pop ar0
+0585            402   
+0585            403           ; check if seconds elapsed > soak time
+0585 E532       404           mov a, seconds_elapsed
+0587 B54806     405           cjne a, time_soak, noChange_soakState
+058A 754402     406           mov OVEN_STATE, #OVEN_STATE_REFLOW
+058D 753200     407           mov seconds_elapsed, #0 ; reset
+0590            408           noChange_soakState:
+0590 0205FF     409           ljmp oven_FSM_done
+0593            410   
+0593            411           ovenFSM_reflow:
+0593 B40260     412           cjne a, #OVEN_STATE_REFLOW, ovenFSM_exit
+0596 C0E0       413            push acc
+0598 7401       413            mov a, #1
+059A 14         413            dec a
+059B 1200C7     413            lcall ?Set_Cursor_1 ; Select column and row
+059E D0E0       413            pop acc
+05A0 C083       414            push dph
+05A2 C082       414            push dpl
+05A4 C0E0       414            push acc
+05A6 9003CD     414            mov dptr, #reflowMessage
+05A9 1200BA     414            lcall ?Send_Constant_String
+05AC D0E0       414            pop acc
+05AE D082       414            pop dpl
+05B0 D083       414            pop dph
+05B2 C083       415            push dph
+05B4 C082       415            push dpl
+05B6 C0E0       415            push acc
+05B8 9003AF     415            mov dptr, #LCD_clearLine
+05BB 1200BA     415            lcall ?Send_Constant_String
+05BE D0E0       415            pop acc
+05C0 D082       415            pop dpl
+05C2 D083       415            pop dph
+05C4 C0E0       416            push acc
+05C6 7401       416            mov a, #1
+05C8 14         416            dec a
+05C9 1200C5     416            lcall ?Set_Cursor_2 ; Select column and row
+05CC D0E0       416            pop acc
+05CE C083       417            push dph
+05D0 C082       417            push dpl
+05D2 C0E0       417            push acc
+05D4 9003AF     417            mov dptr, #LCD_clearLine
+05D7 1200BA     417            lcall ?Send_Constant_String
+05DA D0E0       417            pop acc
+05DC D082       417            pop dpl
+05DE D083       417            pop dph
+05E0 C0E0       418            push acc
+05E2 7401       418            mov a, #1
+05E4 14         418            dec a
+05E5 1200C5     418            lcall ?Set_Cursor_2 ; Select column and row
+05E8 D0E0       418            pop acc
+05EA C000       419            push ar0
+05EC A832       419            mov r0, seconds_elapsed
+05EE 1200CC     419            lcall ?Display_BCD
+05F1 D000       419            pop ar0
+05F3 0205FF     420           ljmp oven_FSM_done
+05F6            421   
+05F6            422           ovenFSM_exit:
+05F6 754400     423           mov OVEN_STATE, #OVEN_STATE_PREHEAT
+05F9 0205FF     424           ljmp oven_FSM_done
+05FC 1204A8     425           lcall STOP_PROCESS ; Exit oven FSM, turn power off, return to program entry
+05FF            426           
+05FF            427           oven_FSM_done:
+05FF 0204AB     428           ljmp OVEN_FSM ; return to start
+0602 22         429           ret
+0603            430   
+0603            431   MENU_FSM:        
+0603 209614     432            jb CHANGE_MENU_PIN, enterMenuStateCheck
+0606 C002       433            push AR2
+0608 7A32       433            mov R2, #50
+060A 120038     433            lcall ?Wait_Milli_Seconds
+060D D002       433            pop AR2               ; debounce delay
+060F 209608     434            jb CHANGE_MENU_PIN, enterMenuStateCheck  ; 
+0612 3096FD     435            jnb CHANGE_MENU_PIN, $        ; wait for release
+0615 E545       436           mov a, MENU_STATE 
+0617 04         437           inc a
+0618 F545       438           mov MENU_STATE, a 
+061A            439   
+061A            440           ; ; increment is checked with a seperate cascade that's outside the FSM
+061A            441           ; ; I wanted to keep FSM state outputs seperate from push button checks - George
+061A            442           ; checkTimeInc:
+061A            443            ; jb INC_TIME_PIN, checkTempInc
+061A            444            ; Wait_Milli_Seconds(#50)             
+061A            445            ; jb INC_TIME_PIN, checkTempInc  ; 
+061A            446            ; jnb INC_TIME_PIN, $ 
+061A            447           ; cjne a, #MENU_STATE_SOAK, incTimeReflow
+061A            448           ;         mov a, time_soak
+061A            449           ;         add A, #5
+061A            450           ;         mov time_soak, a       
+061A            451           ;         sjmp checkTempInc       
+061A            452           ; incTimeReflow:
+061A            453           ;         mov a, time_refl
+061A            454           ;         add A, #5
+061A            455           ;         mov time_refl, a
+061A            456           
+061A            457           ; checkTempInc:
+061A            458            ; jb INC_TEMP_PIN, enterMenuStateCheck
+061A            459            ; Wait_Milli_Seconds(#50)             
+061A            460            ; jb INC_TEMP_PIN, enterMenuStateCheck    
+061A            461            ; jnb INC_TEMP_PIN, $        
+061A            462           ; cjne a, #MENU_STATE_SOAK, incTempReflow  
+061A            463           ;         mov a, temp_soak
+061A            464           ;         add A, #5
+061A            465           ;         mov temp_soak, a       
+061A            466           ;         sjmp enterMenuStateCheck       
+061A            467           ; incTempReflow:
+061A            468           ;         mov a, temp_refl
+061A            469           ;         add A, #5
+061A            470           ;         mov temp_refl, a
+061A            471   
+061A            472           enterMenuStateCheck:
+061A E545       473           mov a, MENU_STATE
+061C            474   
+061C            475           menuFSM_configSoak:
+061C B4007A     476           cjne a, #MENU_STATE_SOAK, menuFSM_configReflow
+061F            477           ; State - Config Soak
+061F            478           ; Inc_Menu_Variable (INC_TEMP_PIN, temp_soak, noSoakTempInc)
+061F            479           ; noSoakTempInc:
+061F            480           ; Inc_Menu_Variable (INC_TIME_PIN, time_soak, noSoaktimeInc)
+061F            481           ; noSoaktimeInc:
+061F            482           ; display Soak Menu Options
+061F C0E0       483            push acc
+0621 7401       483            mov a, #1
+0623 14         483            dec a
+0624 1200C7     483            lcall ?Set_Cursor_1 ; Select column and row
+0627 D0E0       483            pop acc
+0629 C083       484            push dph
+062B C082       484            push dpl
+062D C0E0       484            push acc
+062F 90037D     484            mov dptr, #LCD_soakTemp
+0632 1200BA     484            lcall ?Send_Constant_String
+0635 D0E0       484            pop acc
+0637 D082       484            pop dpl
+0639 D083       484            pop dph
+063B C000       485            push ar0
+063D A847       485            mov r0, temp_soak+1
+063F 1200CC     485            lcall ?Display_BCD
+0642 D000       485            pop ar0
+0644 C000       486            push ar0
+0646 A846       486            mov r0, temp_soak+0
+0648 1200CC     486            lcall ?Display_BCD
+064B D000       486            pop ar0
+064D C083       487            push dph
+064F C082       487            push dpl
+0651 C0E0       487            push acc
+0653 9003AF     487            mov dptr, #LCD_clearLine
+0656 1200BA     487            lcall ?Send_Constant_String
+0659 D0E0       487            pop acc
+065B D082       487            pop dpl
+065D D083       487            pop dph
+065F C0E0       488            push acc
+0661 7401       488            mov a, #1
+0663 14         488            dec a
+0664 1200C5     488            lcall ?Set_Cursor_2 ; Select column and row
+0667 D0E0       488            pop acc
+0669 C083       489            push dph
+066B C082       489            push dpl
+066D C0E0       489            push acc
+066F 900371     489            mov dptr, #LCD_soakTime
+0672 1200BA     489            lcall ?Send_Constant_String
+0675 D0E0       489            pop acc
+0677 D082       489            pop dpl
+0679 D083       489            pop dph
+067B C000       490            push ar0
+067D A848       490            mov r0, time_soak
+067F 1200CC     490            lcall ?Display_BCD
+0682 D000       490            pop ar0
+0684 C083       491            push dph
+0686 C082       491            push dpl
+0688 C0E0       491            push acc
+068A 9003AF     491            mov dptr, #LCD_clearLine
+068D 1200BA     491            lcall ?Send_Constant_String
+0690 D0E0       491            pop acc
+0692 D082       491            pop dpl
+0694 D083       491            pop dph
+0696 020713     492           ljmp menu_FSM_done
+0699            493   
+0699            494           menuFSM_configReflow:
+0699 B40171     495           cjne a, #MENU_STATE_REFLOW, reset_menu_state
+069C            496           ; State - Config Reflow
+069C            497           ; Inc_Menu_Variable (INC_TEMP_PIN, temp_refl, noReflowTempInc)
+069C            498           ; noReflowTempInc:
+069C            499           ; Inc_Menu_Variable (INC_TIME_PIN, time_refl, noReflowTimeInc)
+069C            500           ; noReflowTimeInc:
+069C            501           ; display Reflow Menu Options
+069C C0E0       502            push acc
+069E 7401       502            mov a, #1
+06A0 14         502            dec a
+06A1 1200C7     502            lcall ?Set_Cursor_1 ; Select column and row
+06A4 D0E0       502            pop acc
+06A6 C083       503            push dph
+06A8 C082       503            push dpl
+06AA C0E0       503            push acc
+06AC 900395     503            mov dptr, #LCD_reflowTemp
+06AF 1200BA     503            lcall ?Send_Constant_String
+06B2 D0E0       503            pop acc
+06B4 D082       503            pop dpl
+06B6 D083       503            pop dph
+06B8 C000       504            push ar0
+06BA A849       504            mov r0, temp_refl
+06BC 1200CC     504            lcall ?Display_BCD
+06BF D000       504            pop ar0
+06C1 C083       505            push dph
+06C3 C082       505            push dpl
+06C5 C0E0       505            push acc
+06C7 9003AF     505            mov dptr, #LCD_clearLine
+06CA 1200BA     505            lcall ?Send_Constant_String
+06CD D0E0       505            pop acc
+06CF D082       505            pop dpl
+06D1 D083       505            pop dph
+06D3 C0E0       506            push acc
+06D5 7401       506            mov a, #1
+06D7 14         506            dec a
+06D8 1200C5     506            lcall ?Set_Cursor_2 ; Select column and row
+06DB D0E0       506            pop acc
+06DD C083       507            push dph
+06DF C082       507            push dpl
+06E1 C0E0       507            push acc
+06E3 900389     507            mov dptr, #LCD_reflowTime
+06E6 1200BA     507            lcall ?Send_Constant_String
+06E9 D0E0       507            pop acc
+06EB D082       507            pop dpl
+06ED D083       507            pop dph
+06EF C000       508            push ar0
+06F1 A84B       508            mov r0, time_refl
+06F3 1200CC     508            lcall ?Display_BCD
+06F6 D000       508            pop ar0
+06F8 C083       509            push dph
+06FA C082       509            push dpl
+06FC C0E0       509            push acc
+06FE 9003AF     509            mov dptr, #LCD_clearLine
+0701 1200BA     509            lcall ?Send_Constant_String
+0704 D0E0       509            pop acc
+0706 D082       509            pop dpl
+0708 D083       509            pop dph
+070A 020713     510           ljmp menu_FSM_done
+070D            511   
+070D            512           reset_menu_state: ; sets menu state variable to 0
+070D 754500     513           mov MENU_STATE, #MENU_STATE_SOAK
+0710 020713     514           ljmp menu_FSM_done
+0713            515   
+0713            516           menu_FSM_done:
+0713 22         517           ret
+0714            518   
+0714            519   main_program:
+0714            520           ; George
+0714 75817F     521           mov sp, #0x7f
+0717 120432     522           lcall Initilize_All
+071A 120087     523           lcall LCD_4BIT
+071D            524   
+071D            525           ; Default display - 
+071D            526           ; Reflow oven controller 
+071D            527           ; (Start or Configure?)
+071D            528           PROGRAM_ENTRY:
+071D C0E0       529            push acc
+071F 7401       529            mov a, #1
+0721 14         529            dec a
+0722 1200C7     529            lcall ?Set_Cursor_1 ; Select column and row
+0725 D0E0       529            pop acc
+0727 C083       530            push dph
+0729 C082       530            push dpl
+072B C0E0       530            push acc
+072D 900352     530            mov dptr, #LCD_defaultTop
+0730 1200BA     530            lcall ?Send_Constant_String
+0733 D0E0       530            pop acc
+0735 D082       530            pop dpl
+0737 D083       530            pop dph
+0739 C0E0       531            push acc
+073B 7401       531            mov a, #1
+073D 14         531            dec a
+073E 1200C5     531            lcall ?Set_Cursor_2 ; Select column and row
+0741 D0E0       531            pop acc
+0743 C083       532            push dph
+0745 C082       532            push dpl
+0747 C0E0       532            push acc
+0749 900360     532            mov dptr, #LCD_defaultBot
+074C 1200BA     532            lcall ?Send_Constant_String
+074F D0E0       532            pop acc
+0751 D082       532            pop dpl
+0753 D083       532            pop dph
+0755            533   
+0755            534           checkStartButton: ; assumed negative logic - used a label for an easy ljmp in the future
+0755 209512     535           jb START_PIN, noStartButtonPress
+0758 C002       536            push AR2
+075A 7A32       536            mov R2, #50
+075C 120038     536            lcall ?Wait_Milli_Seconds
+075F D002       536            pop AR2
+0761 209506     537           jb START_PIN, noStartButtonPress
+0764 3095FD     538           jnb START_PIN, $
+0767 02078B     539           ljmp enter_oven_fsm ; successful button press, enter oven FSM   
+076A            540   
+076A            541           noStartButtonPress:
+076A            542           ; if the 'IN_MENU' flag is set, always enter into the menu FSM, this is so that the menu FSM can always be entered
+076A            543           ; creates an infinite loop that will always display menu once entered - broken if START button pressed
+076A 300106     544           jnb IN_MENU_FLAG, checkMenuButtonPress
+076D 120603     545           lcall MENU_FSM 
+0770 020755     546           ljmp checkStartButton
+0773            547   
+0773            548           checkMenuButtonPress:
+0773            549           ; check for enter menu button press (reusing increment menu pin)
+0773 209612     550           jb CHANGE_MENU_PIN, noMenuButtonPress
+0776 C002       551            push AR2
+0778 7A32       551            mov R2, #50
+077A 120038     551            lcall ?Wait_Milli_Seconds
+077D D002       551            pop AR2
+077F 209606     552           jb CHANGE_MENU_PIN, noMenuButtonPress
+0782 3096FD     553           jnb CHANGE_MENU_PIN, $
+0785            554           ; setb IN_MENU_FLAG; successful button press, enter menu FSM loop ; - THIS LINE CAUSES THE BUG
+0785 020798     555           ljmp setMenuFlag ; this isn't executing...
+0788            556           
+0788            557           noMenuButtonPress:
+0788 020755     558           ljmp checkStartButton ; this line does not execute if ljmp setMenuFlag is there?!?!?
+078B            559   
+078B            560           enter_oven_fsm:
+078B C201       561           clr IN_MENU_FLAG ; No longer in menu
+078D D202       562           setb IN_OVEN_FLAG
+078F 1203EA     563           lcall Timer2_Init ; breaks things
+0792 1204AB     564           lcall OVEN_FSM ; will call STOP_PROCESS which loops back to the entry point
+0795 1204A8     565           lcall STOP_PROCESS ; added for safety
+0798            566           
+0798            567           setMenuFlag:
+0798 D201       568           setb IN_MENU_FLAG
+079A 020755     569           ljmp checkStartButton
+079D            570   
+079D            571           program_end:
+079D 020714     572           ljmp main_program
+07A0            573   EN
