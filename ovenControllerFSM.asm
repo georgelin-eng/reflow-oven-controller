@@ -1,4 +1,6 @@
 
+
+
 ; Main file. FSM implementing the following sequence:
 ;       State 0: Power = 0% (default state)
 ;               if start = NO, self loop; if start = YES, next state
@@ -52,19 +54,22 @@ CLK                   EQU 16600000 ; Microcontroller system frequency in Hz
 BAUD                  EQU 115200   ; Baud rate of UART in bps 
 TIMER1_RELOAD         EQU (0x100-(CLK/(16*BAUD))) ; ISR that's used for serial???
 TIMER2_RELOAD         EQU (0x10000-(CLK/1000))    ; For ISR that runs every 1ms
-TIMER0_RELOAD_1MS     EQU (0x10000-(CLK/1000)) ; for delay functions
+TIMER0_RELOAD         EQU (0x10000-(CLK/4096))    ; For 2kHz square wave
 
 ; Pin definitions + Hardware Wiring
-START_PIN             EQU P1.6 ; change to correct pin later
+START_PIN             EQU P1.0 ; change to correct pin later
 ; STOP_PIN              EQU P1.5 ; change to correct pin later
 ; INC_TIME_PIN          EQU P1.7 ; change to correct pin later
 ; INC_TEMP_PIN          EQU P1.7 ; change to correct pin later
-CHANGE_MENU_PIN       EQU P1.5 ; change to correct pin later
-SSR_OUTPUT_PIN        EQU P3.0 ; change to correct pin later
+CHANGE_MENU_PIN       EQU P1.6 ; change to correct pin later
+; SSR_OUTPUT_PIN        EQU P3.0 ; change to correct pin later
 
 
-MENU_STATE_CONFIG_SOAK   EQU 0
-MENU_STATE_CONFIG_REFLOW EQU 1
+MENU_STATE_SOAK        EQU 0
+MENU_STATE_REFLOW      EQU 1
+OVEN_STATE_PREHEAT     EQU 0
+OVEN_STATE_SOAK        EQU 1
+OVEN_STATE_REFLOW      EQU 2
 
 ; define vectors
 ORG 0x0000 ; Reset vector
@@ -135,15 +140,86 @@ LCD_reflowTime  : db 'Refl Time: ', 0
 LCD_reflowTemp  : db 'Refl Temp: ', 0
 LCD_clearLine   : db '                ', 0 ; put at end to clear line
 
+preheatMessage  : db 'Preheat', 0
+soakMessage     : db 'Reflow', 0
+reflowMessage   : db 'Reflow', 0
+
 ; Messages to display on LCD when in Oven Controller FSM
 
+;---------------------------------;
+; Routine to initialize the ISR   ;
+; for timer 0                     ;
+;---------------------------------;
+Timer0_Init:
+	orl CKCON, #0b00001000 ; Input for timer 0 is sysclk/1 ; performs bit masking on CKON - Clock Control ; T0M = 1, timer 0 uses the system clock directly
+	mov a, TMOD
+	anl a, #0xf0 ; 11110000 Clear the bits for timer 0
+	orl a, #0x01 ; 00000001 Configure timer 0 as 16-timer (M1M0 = 01 -> Mode 1: 16-bit Timer/Counter)
+	mov TMOD, a
+	mov TH0, #high(TIMER0_RELOAD) ; 8051 works with 8 bits so the oepration T0 = TIMER0_RELOAD  (16 bits) is done by setting high byte then low byte (8x2)
+	mov TL0, #low (TIMER0_RELOAD)
+	; Enable the timer and interrupts
+    setb ET0  ; Enable timer 0 interrupt
+    setb TR0  ; Start timer 0
+	ret
 
+;---------------------------------;
+; Routine to initialize the ISR   ;
+; for timer 2                     ;
+;---------------------------------;
+Timer2_Init:
+	mov T2CON, #0 ; Stop timer/counter.  Autoreload mode.
+	mov TH2, #high(TIMER2_RELOAD)
+	mov TL2, #low(TIMER2_RELOAD)
+	; Set the reload value
+	orl T2MOD, #0x80 ; Enable timer 2 autoreload
+	mov RCMP2H, #high(TIMER2_RELOAD)
+	mov RCMP2L, #low(TIMER2_RELOAD)
+	; Init One millisecond interrupt counter.  It is a 16-bit variable made with two 8-bit parts
+	clr a
+	mov Count1ms+0, a
+	mov Count1ms+1, a
+	mov Count1ms+0 , a
+	mov Count1ms+1 , a
+	; Enable the timer and interrupts
+	orl EIE, #0x80 ; Enable timer 2 interrupt ET2=1
+    setb TR2  ; Enable timer 2
+	ret
 
 Timer0_ISR:
 reti
 
+;---------------------------------;
+; ISR for timer 2                 ;
+;---------------------------------;
 Timer2_ISR:
-reti
+        clr TF2  ; Timer 2 doesn't clear TF2 automatically. Do it in the ISR.  It is bit addressable.
+        cpl P0.4 ; To check the interrupt rate with oscilloscope. It must be precisely a 1 ms pulse.
+
+        ; The two registers used in the ISR must be saved in the stack
+        push acc
+        push psw
+
+        ; Increment the 16-bit one mili second counter
+        inc Count1ms+0    ; Increment the low 8-bits first
+        mov a, Count1ms+0 ; If the low 8-bits overflow, then increment high 8-bits
+        jnz Inc_done
+        inc Count1ms+1
+        
+        Inc_done:
+        ; Check if one second has passed
+	mov	a, Count1ms+0
+	cjne    a, #low(1000), Timer2_ISR_done ; Warning: this instruction changes the carry flag!
+	mov     a, Count1ms+1
+	cjne    a, #high(1000), Timer2_ISR_done	
+
+        ; ---  1s has passed ----
+        ; mov a, OVEN_STATE
+        ; inc a
+        ; mov OVEN_STATE, a
+        
+        Timer2_ISR_done:
+        reti
 
 Initilize_All:
         ; Configure pins to be bi-directional
@@ -153,6 +229,12 @@ Initilize_All:
 	mov	P1M2,#0x00
 	mov	P0M1,#0x00
 	mov	P0M2,#0x00
+
+        setb    CHANGE_MENU_PIN
+        setb    START_PIN
+
+        setb    EA   ; Enable Global interrupts
+
 
         ; Since the reset button bounces, we need to wait a bit before
         ; sending messages, otherwise we risk displaying gibberish!
@@ -188,8 +270,7 @@ Initilize_All:
 	orl     ADCCON1, #0x01 ; Enable ADC
 
         ; Menu Configuration
-        setb    CHANGE_MENU_PIN
-        clr    IN_MENU_FLAG
+        clr     IN_MENU_FLAG
         clr     IN_OVEN_FLAG
         mov     a, #5
         mov     MENU_STATE, a ; set menu state to 0 
@@ -198,6 +279,9 @@ Initilize_All:
         mov     time_soak, #0x60
         mov     temp_refl, #0x90
         mov     time_refl, #0x1
+
+        ; Oven configuration
+        mov OVEN_STATE, #OVEN_STATE_PREHEAT
         
         ; note that above is pasted from lab 3 - AL, need to add setup code from lab 2
         ret
@@ -218,19 +302,53 @@ Initilize_All:
         ; jnb [button], $
         ; ljmp [display??]
 
-; ; Push button macro
-; Inc_Menu_Variable MAC
-;         jb %0, %2
-;         Wait_Milli_Seconds(#50) ; de-bounce
-;         jb %0, %2
-;         jnb %0, $
-;         ; successful press registered
-;         inc %1
-; ENDMAC
+; Push button macro - It does not work :(
+Inc_Menu_Variable MAC
+        jb %0, %2
+        Wait_Milli_Seconds(#50) ; de-bounce
+        jb %0, %2
+        jnb %0, $
+        ; successful press registered
+        inc %1 ; increment param #1
+ENDMAC
 
 STOP_PROCESS:
+; Turn everything off
+        ljmp PROGRAM_ENTRY
 
 OVEN_FSM:
+        enterOvenStateCheck:
+        mov a, OVEN_STATE
+
+        ; ovenFSM_preheat:
+        cjne a, #OVEN_STATE_PREHEAT, ovenFSM_soak
+        Set_Cursor(1, 1)
+        Send_Constant_String(#preheatMessage)
+        Send_Constant_String(#LCD_clearLine)
+        Set_Cursor(2, 1)
+        Send_Constant_String(#LCD_clearLine)
+
+        ovenFSM_soak:
+        cjne a, #OVEN_STATE_SOAK, ovenFSM_reflow
+        ; Set_Cursor(1, 1)
+        ; Send_Constant_String(#preheatMessage)
+        ; Send_Constant_String(#LCD_clearLine)
+        ; Set_Cursor(2, 1)
+        ; Send_Constant_String(#LCD_clearLine)
+
+        ovenFSM_reflow:
+        cjne a, #OVEN_STATE_REFLOW, ovenFSM_exit
+        ; Set_Cursor(1, 1)
+        ; Send_Constant_String(#preheatMessage)
+        ; Send_Constant_String(#LCD_clearLine)
+        ; Set_Cursor(2, 1)
+        ; Send_Constant_String(#LCD_clearLine)
+
+        ovenFSM_exit:
+        ; mov OVEN_STATE, #OVEN_STATE_REFLOW
+        ljmp OVEN_FSM
+
+        ret
 
 MENU_FSM:        
 	jb CHANGE_MENU_PIN, enterMenuStateCheck
@@ -246,7 +364,7 @@ MENU_FSM:
         mov a, MENU_STATE
 
         menuFSM_configSoak:
-        cjne a, #MENU_STATE_CONFIG_SOAK, menuFSM_configReflow
+        cjne a, #MENU_STATE_SOAK, menuFSM_configReflow
         ; State - Config Soak
         ; Inc_Menu_Variable (INC_TEMP_PIN, temp_soak, noSoakTempInc)
         ; noSoakTempInc:
@@ -263,7 +381,7 @@ MENU_FSM:
         ljmp menu_FSM_done
 
         menuFSM_configReflow:
-        cjne a, #MENU_STATE_CONFIG_REFLOW, reset_menu_state
+        cjne a, #MENU_STATE_REFLOW, reset_menu_state
         ; State - Config Reflow
         ; Inc_Menu_Variable (INC_TEMP_PIN, temp_refl, noReflowTempInc)
         ; noReflowTempInc:
@@ -281,12 +399,11 @@ MENU_FSM:
 
 
         reset_menu_state: ; sets menu state variable to 0
-        mov MENU_STATE, #MENU_STATE_CONFIG_SOAK
+        mov MENU_STATE, #MENU_STATE_SOAK
         ljmp menu_FSM_done
 
 
         menu_FSM_done:
-        ljmp MENU_FSM
         ret
 
 main_program:
@@ -304,32 +421,36 @@ main_program:
 	Set_Cursor(2, 1)
         Send_Constant_String(#LCD_defaultBot)
 
-        ; lcall MENU_FSM
-	
         checkStartButton: ; assumed negative logic - used a label for an easy ljmp in the future
-        ; jb START_PIN, noStartButtonPress
-        ; Wait_Milli_Seconds(#50)
-        ; jb START_PIN, noStartButtonPress
-        ; jnb START_PIN, $
-        ; ljmp enter_oven_fsm ; successful button press, enter oven FSM   
+        jb START_PIN, noStartButtonPress
+        Wait_Milli_Seconds(#50)
+        jb START_PIN, noStartButtonPress
+        jnb START_PIN, $
+        ljmp enter_oven_fsm ; successful button press, enter oven FSM   
 
         noStartButtonPress:
         ; if the 'IN_MENU' flag is set, always enter into the menu FSM, this is so that the menu FSM can always be entered
         ; creates an infinite loop that will always display menu once entered - broken if START button pressed
-        jnb IN_MENU_FLAG, noMenuButtonPress
+        jnb IN_MENU_FLAG, checkMenuButtonPress
         lcall MENU_FSM 
         ljmp checkStartButton
 
-        noMenuButtonPress:
+        checkMenuButtonPress:
         ; check for enter menu button press (reusing increment menu pin)
         jb CHANGE_MENU_PIN, noMenuButtonPress
         Wait_Milli_Seconds(#50)
         jb CHANGE_MENU_PIN, noMenuButtonPress
         jnb CHANGE_MENU_PIN, $
-        ljmp setMenuFlag ; successful button press, enter menu FSM loop
-        ljmp program_end
+        setb IN_MENU_FLAG; successful button press, enter menu FSM loop ; - THIS LINE CAUSES THE BUG
+        ljmp setMenuFlag ; this isn't executing...
         
+        noMenuButtonPress:
+        ljmp checkStartButton ; this line does not execute if ljmp setMenuFlag is there?!?!?
+
         enter_oven_fsm:
+        clr IN_MENU_FLAG ; No longer in menu
+        setb IN_OVEN_FLAG
+        ; lcall Timer2_Init
         lcall OVEN_FSM ; will call STOP_PROCESS which loops back to the entry point
         lcall STOP_PROCESS ; added for safety
         
