@@ -1,3 +1,4 @@
+
 ; Main file. FSM implementing the following sequence:
 ;       State 0: Power = 0% (default state)
 ;               if start = NO, self loop; if start = YES, next state
@@ -45,21 +46,25 @@ $LIST
 
 ; --------------------------------------------------------------------------------------------------------------------------
 
-; Include Macros
-$include(math32.inc)
-$include(LCD_4bit.inc)
 
 ; Timer constants
-CLK                             EQU 16600000 ; Microcontroller system frequency in Hz
-BAUD                            EQU 115200   ; Baud rate of UART in bps 
-TIMER1_RELOAD                   EQU (0x100-(CLK/(16*BAUD))) ; ISR that's used for serial???
-TIMER2_RELOAD                   EQU (0x10000-(CLK/1000))    ; For ISR that runs every 1ms
-TIMER0_RELOAD_1MS EQU (0x10000-(CLK/1000)) ; for delay functions
+CLK                   EQU 16600000 ; Microcontroller system frequency in Hz
+BAUD                  EQU 115200   ; Baud rate of UART in bps 
+TIMER1_RELOAD         EQU (0x100-(CLK/(16*BAUD))) ; ISR that's used for serial???
+TIMER2_RELOAD         EQU (0x10000-(CLK/1000))    ; For ISR that runs every 1ms
+TIMER0_RELOAD_1MS     EQU (0x10000-(CLK/1000)) ; for delay functions
 
 ; Pin definitions + Hardware Wiring
-CHANGE_MENU_DISPLAYED_PIN       EQU P1.7
-SSR_OUTPUT_PIN                  EQU P3.0
+START_PIN             EQU P1.6 ; change to correct pin later
+; STOP_PIN              EQU P1.5 ; change to correct pin later
+; INC_TIME_PIN          EQU P1.7 ; change to correct pin later
+; INC_TEMP_PIN          EQU P1.7 ; change to correct pin later
+CHANGE_MENU_PIN       EQU P1.5 ; change to correct pin later
+SSR_OUTPUT_PIN        EQU P3.0 ; change to correct pin later
 
+
+MENU_STATE_CONFIG_SOAK   EQU 0
+MENU_STATE_CONFIG_REFLOW EQU 1
 
 ; define vectors
 ORG 0x0000 ; Reset vector
@@ -72,31 +77,74 @@ ORG 0x0013 ; External interrupt 1 vector
 	reti
 ORG 0x001B ; Timer/Counter 1 overflow interrupt vector 
 	reti
-ORG 0x0023 ; Serial port receive/transmit interrupt vector (
+ORG 0x0023 ; Serial port receive/transmit interrupt vector 
 	reti
 ORG 0x002B ; Timer/Counter 2 overflow interrupt vector
 	ljmp Timer2_ISR
 
 
-
-
 ; register definitions previously needed by 'math32.inc' - currently commented out for future changes
 DSEG at 30H
-;x:   ds 4
-;y:   ds 4
-;bcd: ds 5
-;bcdf: ds 5
-;VLED_ADC: ds 2
+x               : ds 4
+y               : ds 4
+bcd             : ds 5
+bcdf            : ds 5
+VLED_ADC        : ds 2
 
+OVEN_STATE      : ds 1 ; stores oven FSM state
+MENU_STATE      : ds 1 ; stores menu FSM state
+temp_soak       : ds 1 
+time_soak       : ds 1
+temp_refl       : ds 1
+time_refl       : ds 1
+pwm             : ds 1 ; controls output power to SSR
+
+dseg at 0x30
+Count1ms        : ds 2 ; determines the number of 1ms increments that have passed 
+
+CSEG ;starts the absolute segment from that address
+; These 'EQU' must match the hardware wiring
+LCD_RS          EQU P1.3
+;LCD_RW         EQU PX.X ; Not used in this code, connect the pin to GND
+LCD_E           EQU P1.4
+LCD_D4          EQU P0.0
+LCD_D5          EQU P0.1
+LCD_D6          EQU P0.2
+LCD_D7          EQU P0.3
+
+$NOLIST
+$include(LCD_4bit.inc) ; A library of LCD related functions and utility macros
+$LIST
 
 ; Flags that are used to control events 
 BSEG 
-; mf   				: dbit 1
-IN_MENU         : dbit 1
+mf              : dbit 1
+IN_MENU_FLAG    : dbit 1
+IN_OVEN_FLAG    : dbit 1
+
+$NOLIST
+$include(math32.inc)
+$LIST
+
+; Messages to display on LCD when in Menu FSM
+LCD_defaultTop  : db 'Reflow Oven: ', 0
+LCD_defaultBot  : db 'Start/Configure?', 0
+LCD_soakTime    : db 'Soak Time: ', 0
+LCD_soakTemp    : db 'Soak Temp: ', 0
+LCD_reflowTime  : db 'Refl Time: ', 0
+LCD_reflowTemp  : db 'Refl Temp: ', 0
+LCD_clearLine   : db '                ', 0 ; put at end to clear line
+
+; Messages to display on LCD when in Oven Controller FSM
 
 
-CSEG ;starts the absolute segment from that address
-        
+
+Timer0_ISR:
+reti
+
+Timer2_ISR:
+reti
+
 Initilize_All:
         ; Configure pins to be bi-directional
         mov	P3M1,#0x00
@@ -112,7 +160,7 @@ Initilize_All:
 
         ; Now we can proceed with the configuration of the serial port
         orl	CKCON, #0x10 ; CLK is the input for timer 1
-        orl	PCON, #0x80 ; Bit SMOD=1, double baud rate
+        orl	PCON, #0x80  ; Bit SMOD=1, double baud rate
         mov	SCON, #0x52
         anl	T3CON, #0b11011111
         anl	TMOD, #0x0F ; Clear the configuration bits for timer 1
@@ -138,6 +186,18 @@ Initilize_All:
 	mov     AINDIDS, #0x00 ; Disable all analog inputs
 	orl     AINDIDS, #0b10000001 ; Activate AIN0 and AIN7 analog inputs
 	orl     ADCCON1, #0x01 ; Enable ADC
+
+        ; Menu Configuration
+        setb    CHANGE_MENU_PIN
+        clr    IN_MENU_FLAG
+        clr     IN_OVEN_FLAG
+        mov     a, #5
+        mov     MENU_STATE, a ; set menu state to 0 
+
+        mov     temp_soak, #0x80
+        mov     time_soak, #0x60
+        mov     temp_refl, #0x90
+        mov     time_refl, #0x1
         
         ; note that above is pasted from lab 3 - AL, need to add setup code from lab 2
         ret
@@ -151,19 +211,132 @@ Initilize_All:
         ; Two buttons to go up or down a value
         ; One button to stop <---- safety feature make this button only STOP
         
-        ;pseudo code lol
-        jb [button], [branch]
-        Wait_Milli_Seconds(#50)
-        jb [button], [branch]
-        jnb [button], $
-        ljmp [display??]
+        ; ;pseudo code lol
+        ; jb [button], [branch]
+        ; Wait_Milli_Seconds(#50)
+        ; jb [button], [branch]
+        ; jnb [button], $
+        ; ljmp [display??]
+
+; ; Push button macro
+; Inc_Menu_Variable MAC
+;         jb %0, %2
+;         Wait_Milli_Seconds(#50) ; de-bounce
+;         jb %0, %2
+;         jnb %0, $
+;         ; successful press registered
+;         inc %1
+; ENDMAC
+
+STOP_PROCESS:
+
+OVEN_FSM:
+
+MENU_FSM:        
+	jb CHANGE_MENU_PIN, enterMenuStateCheck
+	Wait_Milli_Seconds(#50)	      ; debounce delay
+	jb CHANGE_MENU_PIN, enterMenuStateCheck  ; 
+	jnb CHANGE_MENU_PIN, $             ; wait for release
+
+        mov a, MENU_STATE
+        inc a
+        mov MENU_STATE, a ; line is doubled for clarity - George
+        
+        enterMenuStateCheck:
+        mov a, MENU_STATE
+
+        menuFSM_configSoak:
+        cjne a, #MENU_STATE_CONFIG_SOAK, menuFSM_configReflow
+        ; State - Config Soak
+        ; Inc_Menu_Variable (INC_TEMP_PIN, temp_soak, noSoakTempInc)
+        ; noSoakTempInc:
+        ; Inc_Menu_Variable (INC_TIME_PIN, time_soak, noSoaktimeInc)
+        ; noSoaktimeInc:
+        ; display Soak Menu Options
+        Set_Cursor(1, 1)
+        Send_Constant_String(#LCD_soakTemp)
+        Display_BCD (temp_soak)
+        Set_Cursor(2, 1)
+        Send_Constant_String(#LCD_soakTime)
+        Display_BCD (time_soak)
+        Send_Constant_String(#LCD_clearLine)
+        ljmp menu_FSM_done
+
+        menuFSM_configReflow:
+        cjne a, #MENU_STATE_CONFIG_REFLOW, reset_menu_state
+        ; State - Config Reflow
+        ; Inc_Menu_Variable (INC_TEMP_PIN, temp_refl, noReflowTempInc)
+        ; noReflowTempInc:
+        ; Inc_Menu_Variable (INC_TIME_PIN, time_refl, noReflowTimeInc)
+        ; noReflowTimeInc:
+        ; display Reflow Menu Options
+        Set_Cursor(1, 1)
+        Send_Constant_String(#LCD_reflowTemp)
+        Display_BCD (temp_refl)
+        Set_Cursor(2, 1)
+        Send_Constant_String(#LCD_reflowTime)
+        Display_BCD (time_refl)
+        Send_Constant_String(#LCD_clearLine)
+        ljmp menu_FSM_done
 
 
+        reset_menu_state: ; sets menu state variable to 0
+        mov MENU_STATE, #MENU_STATE_CONFIG_SOAK
+        ljmp menu_FSM_done
+
+
+        menu_FSM_done:
+        ljmp MENU_FSM
+        ret
 
 main_program:
+        ; George
+        mov sp, #0x7f
+        lcall Initilize_All
+        lcall LCD_4BIT
+
+        ; Default display - 
+        ; Reflow oven controller 
+        ; (Start or Configure?)
+        PROGRAM_ENTRY:
+	Set_Cursor(1, 1)
+        Send_Constant_String(#LCD_defaultTop)
+	Set_Cursor(2, 1)
+        Send_Constant_String(#LCD_defaultBot)
+
+        ; lcall MENU_FSM
+	
+        checkStartButton: ; assumed negative logic - used a label for an easy ljmp in the future
+        ; jb START_PIN, noStartButtonPress
+        ; Wait_Milli_Seconds(#50)
+        ; jb START_PIN, noStartButtonPress
+        ; jnb START_PIN, $
+        ; ljmp enter_oven_fsm ; successful button press, enter oven FSM   
+
+        noStartButtonPress:
+        ; if the 'IN_MENU' flag is set, always enter into the menu FSM, this is so that the menu FSM can always be entered
+        ; creates an infinite loop that will always display menu once entered - broken if START button pressed
+        jnb IN_MENU_FLAG, noMenuButtonPress
+        lcall MENU_FSM 
+        ljmp checkStartButton
+
+        noMenuButtonPress:
+        ; check for enter menu button press (reusing increment menu pin)
+        jb CHANGE_MENU_PIN, noMenuButtonPress
+        Wait_Milli_Seconds(#50)
+        jb CHANGE_MENU_PIN, noMenuButtonPress
+        jnb CHANGE_MENU_PIN, $
+        ljmp setMenuFlag ; successful button press, enter menu FSM loop
+        ljmp program_end
         
+        enter_oven_fsm:
+        lcall OVEN_FSM ; will call STOP_PROCESS which loops back to the entry point
+        lcall STOP_PROCESS ; added for safety
+        
+        setMenuFlag:
+        setb IN_MENU_FLAG
+        ljmp checkStartButton
 
-
+        program_end:
         ljmp main_program
-
 END

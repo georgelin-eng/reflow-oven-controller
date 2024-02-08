@@ -51,7 +51,7 @@ FSM1_state1_done:
     mov FSM1_state, #3
     FSM1_state2_done:
     ljmp FSM2
-
+    
 
 
 ;;;;; 8 Bit Number Binary to Decimal Conversion ;;;;;
