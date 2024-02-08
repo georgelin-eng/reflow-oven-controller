@@ -1,8 +1,4 @@
 
-
-
-
-
 ; Main file. FSM implementing the following sequence:
 ;       State 0: Power = 0% (default state)
 ;               if start = NO, self loop; if start = YES, next state
@@ -17,6 +13,24 @@
 ;       State 5: Power = 0%
 ;               if temp >=60, self loop; temp <60, next
 ;       return to state 0
+
+
+; MACROS ;
+CLJNE mac
+    cjne %0, %1, $+3+2 ; Jump if no equal 2 bytes ahead since sjmp is a 2 byte instruction  
+    sjmp $+2+3 ; Jump 3 bytes after this instruction as ljmp takes 3 bytes to encode
+    ljmp %2 ; ljmp can access any part of the code space
+endmac
+
+; Push button macro - It does not work :( - check if it works now, moved location
+check_Push_Button MAC
+    jb %0, %1
+    Wait_Milli_Seconds(#50)
+    jb %0, %1
+    jnb %0, $
+ENDMAC
+
+
 
 $NOLIST
 $MODN76E003
@@ -54,9 +68,9 @@ $LIST
 ; Timer constants
 CLK                   EQU 16600000 ; Microcontroller system frequency in Hz
 BAUD                  EQU 115200   ; Baud rate of UART in bps 
-TIMER1_RELOAD         EQU (0x100-(CLK/(16*BAUD))) ; ISR that's used for serial???
-TIMER2_RELOAD         EQU (65536-(CLK/1000))    ; For ISR that runs every 1ms
-TIMER0_RELOAD         EQU (0x10000-(CLK/4096))    ; For 2kHz square wave
+TIMER1_RELOAD         EQU (0x100-(CLK/(16*BAUD))) ; Serial ISR
+TIMER2_RELOAD         EQU (65536-(CLK/1000))    ; 1ms Delay ISR
+TIMER0_RELOAD         EQU (0x10000-(CLK/4096))    ; Sound ISR For 2kHz square wave
 
 ; Pin definitions + Hardware Wiring
 START_PIN             EQU P1.5 ; change to correct pin later
@@ -92,7 +106,7 @@ ORG 0x002B ; Timer/Counter 2 overflow interrupt vector
 
 
 ; register definitions previously needed by 'math32.inc' - currently commented out for future changes
-DSEG at 30H
+DSEG at 0x30
 x               : ds 4
 y               : ds 4
 bcd             : ds 5
@@ -102,14 +116,15 @@ VLED_ADC        : ds 2
 OVEN_STATE      : ds 1 ; stores oven FSM state
 MENU_STATE      : ds 1 ; stores menu FSM state
 temp_soak       : ds 2 
+; temp_soak       : ds 2 
 time_soak       : ds 1
 temp_refl       : ds 2
 time_refl       : ds 1
 pwm             : ds 1 ; controls output power to SSR
 
-dseg at 0x30
 Count1ms        : ds 2 ; determines the number of 1ms increments that have passed 
 seconds_elapsed	: DS 1
+exit_seconds    : DS 1 ; if we dont reach 50 c before 60 S terminate
 
 
 CSEG ;starts the absolute segment from that address
@@ -131,6 +146,7 @@ BSEG
 mf              : dbit 1
 IN_MENU_FLAG    : dbit 1
 IN_OVEN_FLAG    : dbit 1
+REFLOW_FLAG     : dbit 1
 
 $NOLIST
 $include(math32.inc)
@@ -151,6 +167,51 @@ soakMessage     : db 'Soak', 0
 reflowMessage   : db 'Reflow', 0
 
 ; Messages to display on LCD when in Oven Controller FSM
+
+
+; Send a character using the serial port
+putchar:
+    jnb TI, putchar
+    clr TI
+    mov SBUF, a
+    ret
+
+; Send a constant-zero-terminated string using the serial port
+SendString:
+    clr A
+    movc A, @A+DPTR
+    jz SendStringDone
+    lcall putchar
+    inc DPTR
+    sjmp SendString
+SendStringDone:
+    ret
+
+
+;---------------------------------;
+; Send a BCD number to PuTTY      ;
+;---------------------------------;
+Send_BCD mac
+	push ar0
+	mov r0, %0
+	lcall ?Send_BCD
+	pop ar0
+	endmac
+	?Send_BCD:
+	push acc
+	; Write most significant digit
+	mov a, r0
+	swap a
+	anl a, #0fh
+	orl a, #30h
+	lcall putchar
+	; write least significant digit
+	mov a, r0
+	anl a, #0fh
+	orl a, #30h
+	lcall putchar
+	pop acc
+ret
 
 ;---------------------------------;
 ; Routine to initialize the ISR   ;
@@ -204,11 +265,15 @@ Timer2_ISR:
         push acc
         push psw
 
+        
+
+
         ; Increment the 16-bit one mili second counter
         inc Count1ms+0    ; Increment the low 8-bits first
         mov a, Count1ms+0 ; If the low 8-bits overflow, then increment high 8-bits
         jnz Inc_done
         inc Count1ms+1
+
         
         Inc_done:
         ; Check if one second has passed
@@ -217,13 +282,37 @@ Timer2_ISR:
 	mov     a, Count1ms+1
 	cjne    a, #high(1000), Timer2_ISR_done	
 
-        ; ; ---  1s has passed ----
+        ; ---  1s has passed ----
+        ; send serial data
+
+        ; load_x(seconds_elapsed)
+        mov x+0, seconds_elapsed
+        mov x+1, #0
+        mov x+2, #0
+        mov x+3, #0
+        
+        ;`    lcall hex2bcd
+        ;Send_BCD (bcd+1)
+        Send_BCD (seconds_elapsed+0)
+        Send_BCD (seconds_elapsed)
+        mov a, #'\r' ; Return character
+        lcall putchar
+        mov a, #'\n' ; New-line character
+        lcall putchar
+
         ; mov a, OVEN_STATE
         ; add A, #1
         ; mov OVEN_STATE, a
-
+        jnb REFLOW_FLAG,  not_in_reflow ;Checks if we are in reflow state
+        mov a, exit_seconds
+        add a, #1
+        da A
+        mov exit_seconds, a
+        
+ not_in_reflow:
         mov a, seconds_elapsed
         add A, #1
+        da A
         mov seconds_elapsed, a
 
         ; reset seconds ms counter
@@ -264,12 +353,15 @@ Initilize_All:
         orl	TMOD, #0x20 ; Timer 1 Mode 2
         mov	TH1, #TIMER1_RELOAD
         setb    TR1
-                        
+
+        ; ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ SUS  ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓   
+        ; works on its own from lab3, might interfere with other stuff though             
         ; Using timer 0 for delay functions.  Initialize here:
 	clr	TR0         ; Stop timer 0
 	orl	CKCON,#0x08 ; CLK is the input for timer 0
 	anl	TMOD,#0xF0  ; Clear the configuration bits for timer 0
 	orl	TMOD,#0x01  ; Timer 0 in Mode 1: 16-bit timer
+        ; ^ ^ ^ ^ ^ ^ ^ ^^ ^ ^ ^ ^ ^^ ^ ^ ^ ^^ ^ ^ ^            
 	
 	; Initialize the pins used by the ADC (P1.1, P1.7) as input.
 	orl	P1M1, #0b10000010
@@ -297,22 +389,13 @@ Initilize_All:
         mov     temp_refl+0, #low (0x90)
         mov     temp_refl+1, #high(0x90)
         mov     time_refl, #0x1
-
-        ; incrementing BCD values greater than 0x99: 
-        ; mov a, temp_soak+0
-        ; add a, #5
-        ; mov temp_soak+0, a
-        ; jnz tempSoakIncDone
-        ; mov a, temp_soak+1
-        ; add a, #5
-        ; mov temp_soak+1, a
-        ; tempSoakIncDone:
-
+        
         ; Oven configuration
         mov OVEN_STATE, #OVEN_STATE_PREHEAT
         mov seconds_elapsed, #0
+        mov exit_seconds, #0
+        clr REFLOW_FLAG
         
-        ; note that above is pasted from lab 3 - AL, need to add setup code from lab 2
         ret
         
 ;Button nested logic -> we should be constantly checking in the main loop for a stop (i.e the stop should be instantaneous)
@@ -331,16 +414,6 @@ Initilize_All:
         ; jnb [button], $
         ; ljmp [display??]
 
-; Push button macro - It does not work :(
-Inc_Menu_Variable MAC
-        jb %0, %2
-        Wait_Milli_Seconds(#50) ; de-bounce
-        jb %0, %2
-        jnb %0, $
-        ; successful press registered
-        inc %1 ; increment param #1
-ENDMAC
-
 ; ; 3 values : current time elapsed in seconds, 
 ; FSM_transition_check MAC
 ;         jb %0, %2
@@ -351,8 +424,63 @@ ENDMAC
 ;         inc %1 ; increment param #1
 ; ENDMAC
 
+;hannah y~
+; Send a character using the serial port
+;putchar:
+    ;jnb TI, putchar
+    ;clr TI
+    ;mov SBUF, a
+    ;ret
+
+; Send a constant-zero-terminated string using the serial port
+;SendString:
+    ;clr A
+    ;movc A, @A+DPTR
+    ;jz SendStringDone
+    ;lcall putchar
+    ;inc DPTR
+    ;sjmp SendString
+;SendStringDone:
+    ;ret
+
+; Macro for sending temperature value to the serial go-between (PuTTY)
+;Send_BCD mac
+	;push ar0
+	;mov r0, %0
+	;lcall ?Send_BCD
+	;pop ar0
+;endmac
+
+; ;?Send_BCD:
+; 	push acc
+; 	;Write most significant digit
+; 	mov a, r0
+; 	swap a
+; 	anl a, #0fh
+; 	orl a, #30h
+; 	lcall putchar
+; 	;write least significant digit
+; 	mov a, r0
+; 	anl a, #0fh
+; 	orl a, #30h
+; 	lcall putchar
+; 	pop acc
+; 	ret
+; Send_to_Putty:
+; 	Send_BCD(bcd+3)
+; 	Send_BCD(bcd+2) 
+; 	mov DPTR, #Dec_pt
+; 	lcall SendString
+; 	Send_BCD(bcd+1) 
+; 	;Send_BCD(bcd+0) 
+; 	mov DPTR, #Enter
+; 	lcall SendString
+; 	; ret
+
 STOP_PROCESS:
-; Turn everything off
+        ; Turn everything off
+        clr REFLOW_FLAG
+        ; MOV
         ljmp PROGRAM_ENTRY
 
 ; Precondition: Has temperature stored in x
@@ -366,74 +494,77 @@ OVEN_FSM:
 
         ; check oven state if stop button is not pressed
         enterOvenStateCheck:
-        mov a, OVEN_STATE
-
-        ; MOV x+0, #low(0x260)
-        ; MOV x+1, #high(0x260)
-        ; MOV x+2, #0
-        ; MOV x+3, #0
-
+                mov a, OVEN_STATE
+                
+                mov x+0, #low(600)   ; current temperature              
+                mov x+1, #high(600)  ; current temperature              
+                
         ovenFSM_preheat:
-        cjne a, #OVEN_STATE_PREHEAT, ovenFSM_soak
-        Set_Cursor(1, 1)
-        Send_Constant_String(#preheatMessage)
-        Send_Constant_String(#LCD_clearLine)
-        Set_Cursor(2, 1)
-        Send_Constant_String(#LCD_clearLine)
-        Set_Cursor(2, 1)
-        Display_BCD(seconds_elapsed)
+                cjne a, #OVEN_STATE_PREHEAT, ovenFSM_soak
+                Set_Cursor(1, 1)
+                Send_Constant_String(#preheatMessage)
+                Send_Constant_String(#LCD_clearLine)
+                Set_Cursor(2, 1)
+                ; Set_Cursor(2, 1)
+                Display_BCD(seconds_elapsed)
 
-        ; check if temp >= soak temp
-        load_y (temp_soak)
-        lcall x_gteq_y
-        jnb mf, noChange_preheatState
-        mov OVEN_STATE, #OVEN_STATE_SOAK
-        noChange_preheatState:
-        ljmp oven_FSM_done
+                ;ROHAN
+                ;Emergency exit process
+                setb REFLOW_FLAG
+                mov a, exit_seconds
+                cjne a, #60, Skip_Emergency_exit
+                ;load_y(50)
+                ;lcall x_gteq_y
+                ;jb mf, Skip_Emergency_exit
+
+                ;lcall ;send temperature value to serial
+                ljmp STOP_PROCESS ; more then 60 seconds has elapse and we are below 50C ESCAPE
+                
+        Skip_Emergency_exit:        
+                load_y (temp_soak) ; this line is sus ; temp_soak is a BCD value
+                lcall x_lteq_y
+                jnb mf, noChange_preheatState
+                mov OVEN_STATE, #OVEN_STATE_SOAK
+                noChange_preheatState:
+                ljmp oven_FSM_done
 
         ovenFSM_soak:
-        cjne a, #OVEN_STATE_SOAK, ovenFSM_reflow
-        Set_Cursor(1, 1)
-        Send_Constant_String(#soakMessage)
-        Send_Constant_String(#LCD_clearLine)
-        Set_Cursor(2, 1)
-        Send_Constant_String(#LCD_clearLine)
-        Set_Cursor(2, 1)
-        Display_BCD(seconds_elapsed)
+                cjne a, #OVEN_STATE_SOAK, ovenFSM_reflow
+                Set_Cursor(1, 1)
+                Send_Constant_String(#soakMessage)
+                Send_Constant_String(#LCD_clearLine)
+                Set_Cursor(2, 1)
+                Display_BCD(seconds_elapsed)
 
-        ; check if seconds elapsed > soak time
-        mov a, seconds_elapsed
-        cjne a, time_soak, noChange_soakState
-        mov OVEN_STATE, #OVEN_STATE_REFLOW
-        mov seconds_elapsed, #0 ; reset
-        noChange_soakState:
-        ljmp oven_FSM_done
+                ; check if seconds elapsed > soak time
+                mov a, seconds_elapsed
+                cjne a, time_soak, noChange_soakState
+                mov OVEN_STATE, #OVEN_STATE_REFLOW
+                mov seconds_elapsed, #0 ; reset
+                noChange_soakState:
+                ljmp oven_FSM_done
 
         ovenFSM_reflow:
-        cjne a, #OVEN_STATE_REFLOW, ovenFSM_exit
-        Set_Cursor(1, 1)
-        Send_Constant_String(#reflowMessage)
-        Send_Constant_String(#LCD_clearLine)
-        Set_Cursor(2, 1)
-        Send_Constant_String(#LCD_clearLine)
-        Set_Cursor(2, 1)
-        Display_BCD(seconds_elapsed)
-        ljmp oven_FSM_done
+                cjne a, #OVEN_STATE_REFLOW, ovenFSM_exit
+                Set_Cursor(1, 1)
+                Send_Constant_String(#reflowMessage)
+                Send_Constant_String(#LCD_clearLine)
+                Set_Cursor(2, 1)
+                Display_BCD(seconds_elapsed)
+                ljmp oven_FSM_done
 
         ovenFSM_exit:
-        mov OVEN_STATE, #OVEN_STATE_PREHEAT
-        ljmp oven_FSM_done
-        lcall STOP_PROCESS ; Exit oven FSM, turn power off, return to program entry
-        
+                mov OVEN_STATE, #OVEN_STATE_PREHEAT
+                ljmp oven_FSM_done
+                lcall STOP_PROCESS ; Exit oven FSM, turn power off, return to program entry
+                
         oven_FSM_done:
-        ljmp OVEN_FSM ; return to start
-        ret
+                ljmp OVEN_FSM ; return to start
+        
+        ret ; technically unncessary
 
 MENU_FSM:        
-	jb CHANGE_MENU_PIN, checkTimeInc
-	Wait_Milli_Seconds(#50)	      ; debounce delay
-	jb CHANGE_MENU_PIN, checkTimeInc  ; 
-	jnb CHANGE_MENU_PIN, $        ; wait for release
+        check_Push_Button (CHANGE_MENU_PIN, checkTimeInc)
         mov a, MENU_STATE 
         inc a
         mov MENU_STATE, a 
@@ -441,98 +572,82 @@ MENU_FSM:
         ; increment is checked with a seperate cascade that's outside the FSM
         ; I wanted to keep FSM state outputs seperate from push button checks - George
         checkTimeInc:
-	jb INC_TIME_PIN, checkTempInc
-	Wait_Milli_Seconds(#50)	      
-	jb INC_TIME_PIN, checkTempInc  ; 
-	jnb INC_TIME_PIN, $ 
-        cjne a, #MENU_STATE_SOAK, incTimeReflow
-                mov a, time_soak
-                add A, #5
-                DA A
-                mov time_soak, a       
-                sjmp checkTempInc       
-        incTimeReflow:
-                mov a, time_refl
-                add A, #5
-                DA A
-                mov time_refl, a
-        
-        checkTempInc:
-	jb INC_TEMP_PIN, enterMenuStateCheck
-	Wait_Milli_Seconds(#50)	      
-	jb INC_TEMP_PIN, enterMenuStateCheck    
-	jnb INC_TEMP_PIN, $        
-        cjne a, #MENU_STATE_SOAK, incTempReflow  ; issues 295 -> 700
-                mov a, temp_soak+0
-                add a, #0x5
-                DA a
-                mov temp_soak+0, a
-                jnz tempSoakIncDone
-                mov a, temp_soak+1
-                add a, #0x5
-                DA a
-                mov temp_soak+1, a
-                tempSoakIncDone:
-                sjmp enterMenuStateCheck       
-        incTempReflow:
-                mov a, temp_refl+0
-                add a, #0x5
-                DA a
-                mov temp_refl+0, a
-                jnz tempReflIncDone
-                mov a, temp_refl+1
-                add a, #0x5
-                DA a
-                mov temp_refl+1, a
-                tempReflIncDone:
+                check_Push_Button(INC_TIME_PIN, checkTempInc)
+                cjne a, #MENU_STATE_SOAK, incTimeReflow
+                        mov a, time_soak
+                        add A, #5
+                        DA A
+                        mov time_soak, a       
+                        sjmp checkTempInc       
+                incTimeReflow:
+                        mov a, time_refl
+                        add A, #5
+                        DA A
+                        mov time_refl, a
 
+        checkTempInc:
+                check_Push_Button(INC_TEMP_PIN, enterMenuStateCheck)      
+                cjne a, #MENU_STATE_SOAK, incTempReflow  ; issues 295 -> 700
+                        mov a, temp_soak+0
+                        add a, #0x5
+                        DA a
+                        mov temp_soak+0, a
+                        jnz tempSoakIncDone
+                        mov a, temp_soak+1 ; +1 refers to most significant digit
+                        add a, #0x1 ; hundreds/thousands place BCD is +1 instead of +5
+                        DA a
+                        mov temp_soak+1, a
+                tempSoakIncDone:
+                        sjmp enterMenuStateCheck       
+                incTempReflow:
+                        mov a, temp_refl+0
+                        add a, #0x5
+                        DA a
+                        mov temp_refl+0, a
+                        jnz tempReflIncDone
+                        mov a, temp_refl+1
+                        add a, #0x1
+                        DA a
+                        mov temp_refl+1, a
+        tempReflIncDone:
+                
         enterMenuStateCheck:
-        mov a, MENU_STATE
+                mov a, MENU_STATE
 
         menuFSM_configSoak:
-        cjne a, #MENU_STATE_SOAK, menuFSM_configReflow
-        ; State - Config Soak
-        ; Inc_Menu_Variable (INC_TEMP_PIN, temp_soak, noSoakTempInc)
-        ; noSoakTempInc:
-        ; Inc_Menu_Variable (INC_TIME_PIN, time_soak, noSoaktimeInc)
-        ; noSoaktimeInc:
-        ; display Soak Menu Options
-        Set_Cursor(1, 1)
-        Send_Constant_String(#LCD_soakTemp)
-        Display_BCD (temp_soak+1)
-        Display_BCD (temp_soak+0)
-        Send_Constant_String(#LCD_clearLine)
-        Set_Cursor(2, 1)
-        Send_Constant_String(#LCD_soakTime)
-        Display_BCD (time_soak)
-        Send_Constant_String(#LCD_clearLine)
-        ljmp menu_FSM_done
+                cjne a, #MENU_STATE_SOAK, menuFSM_configReflow
+                ; display Soak Menu Options
+                Set_Cursor(1, 1)
+                Send_Constant_String(#LCD_soakTemp)
+                Display_BCD (temp_soak+1)
+                Display_BCD (temp_soak+0)
+                Send_Constant_String(#LCD_clearLine)
+                Set_Cursor(2, 1)
+                Send_Constant_String(#LCD_soakTime)
+                Display_BCD (time_soak)
+                Send_Constant_String(#LCD_clearLine)
+                ljmp menu_FSM_done
 
         menuFSM_configReflow:
-        cjne a, #MENU_STATE_REFLOW, reset_menu_state
-        ; State - Config Reflow
-        ; Inc_Menu_Variable (INC_TEMP_PIN, temp_refl, noReflowTempInc)
-        ; noReflowTempInc:
-        ; Inc_Menu_Variable (INC_TIME_PIN, time_refl, noReflowTimeInc)
-        ; noReflowTimeInc:
-        ; display Reflow Menu Options
-        Set_Cursor(1, 1)
-        Send_Constant_String(#LCD_reflowTemp)
-        Display_BCD (temp_refl+1)
-        Display_BCD (temp_refl+0)
-        Send_Constant_String(#LCD_clearLine)
-        Set_Cursor(2, 1)
-        Send_Constant_String(#LCD_reflowTime)
-        Display_BCD (time_refl)
-        Send_Constant_String(#LCD_clearLine)
-        ljmp menu_FSM_done
+                cjne a, #MENU_STATE_REFLOW, reset_menu_state
+                ; display Reflow Menu Options
+                Set_Cursor(1, 1)
+                Send_Constant_String(#LCD_reflowTemp)
+                Display_BCD (temp_refl+1)
+                Display_BCD (temp_refl+0)
+                Send_Constant_String(#LCD_clearLine)
+                Set_Cursor(2, 1)
+                Send_Constant_String(#LCD_reflowTime)
+                Display_BCD (time_refl)
+                Send_Constant_String(#LCD_clearLine)
+                ljmp menu_FSM_done
 
         reset_menu_state: ; sets menu state variable to 0
-        mov MENU_STATE, #MENU_STATE_SOAK
-        ljmp menu_FSM_done
+                mov MENU_STATE, #MENU_STATE_SOAK
+                ljmp menu_FSM_done
 
         menu_FSM_done:
-        ret
+                ret
 
 main_program:
         ; George
@@ -544,48 +659,47 @@ main_program:
         ; Reflow oven controller 
         ; (Start or Configure?)
         PROGRAM_ENTRY:
-	Set_Cursor(1, 1)
-        Send_Constant_String(#LCD_defaultTop)
-	Set_Cursor(2, 1)
-        Send_Constant_String(#LCD_defaultBot)
+                Set_Cursor(1, 1)
+                Send_Constant_String(#LCD_defaultTop)
+                Set_Cursor(2, 1)
+                Send_Constant_String(#LCD_defaultBot)
 
         checkStartButton: ; assumed negative logic - used a label for an easy ljmp in the future
-        jb START_PIN, noStartButtonPress
-        Wait_Milli_Seconds(#50)
-        jb START_PIN, noStartButtonPress
-        jnb START_PIN, $
-        ljmp enter_oven_fsm ; successful button press, enter oven FSM   
+                check_Push_Button(START_PIN, noStartButtonPress)
+                ljmp enter_oven_fsm ; successful button press, enter oven FSM   
 
         noStartButtonPress:
-        ; if the 'IN_MENU' flag is set, always enter into the menu FSM, this is so that the menu FSM can always be entered
-        ; creates an infinite loop that will always display menu once entered - broken if START button pressed
-        jnb IN_MENU_FLAG, checkMenuButtonPress
-        lcall MENU_FSM 
-        ljmp checkStartButton
+                ; if the 'IN_MENU' flag is set, always enter into the menu FSM, this is so that the menu FSM can always be entered
+                ; creates an infinite loop that will always display menu once entered - broken if START button pressed
+                jnb IN_MENU_FLAG, checkMenuButtonPress
+                lcall MENU_FSM 
+                ljmp checkStartButton
 
         checkMenuButtonPress:
-        ; check for enter menu button press (reusing increment menu pin)
-        jb CHANGE_MENU_PIN, noMenuButtonPress
-        Wait_Milli_Seconds(#50)
-        jb CHANGE_MENU_PIN, noMenuButtonPress
-        jnb CHANGE_MENU_PIN, $
-        ; setb IN_MENU_FLAG; successful button press, enter menu FSM loop ; - THIS LINE CAUSES THE BUG
-        ljmp setMenuFlag ; this isn't executing...
-        
+                ; check for enter menu button press (reusing increment menu pin)
+                check_Push_Button(CHANGE_MENU_PIN, noMenuButtonPress)
+                ; setb IN_MENU_FLAG; successful button press, enter menu FSM loop ; - THIS LINE CAUSES THE BUG
+                ljmp setMenuFlag
+                
         noMenuButtonPress:
-        ljmp checkStartButton ; this line does not execute if ljmp setMenuFlag is there?!?!?
+                ljmp checkStartButton ; this line does not execute if ljmp setMenuFlag is there?!?!?
 
         enter_oven_fsm:
-        clr IN_MENU_FLAG ; No longer in menu
-        setb IN_OVEN_FLAG
-        lcall Timer2_Init ; breaks things
-        lcall OVEN_FSM ; will call STOP_PROCESS which loops back to the entry point
-        lcall STOP_PROCESS ; added for safety
-        
-        setMenuFlag:
-        setb IN_MENU_FLAG
-        ljmp checkStartButton
+                clr IN_MENU_FLAG ; No longer in menu
+                setb IN_OVEN_FLAG
+                Set_Cursor(1,1)
+                Send_Constant_String(#LCD_clearLine)
+                Set_Cursor(2,1)
+                Send_Constant_String(#LCD_clearLine)
+
+                lcall Timer2_Init  ; breaks things
+                lcall OVEN_FSM     ; will call STOP_PROCESS which loops back to the entry point
+                lcall STOP_PROCESS ; added for safety
+                
+        setMenuFlag: 
+                setb IN_MENU_FLAG
+                ljmp checkStartButton
 
         program_end:
-        ljmp main_program
+                ljmp main_program
 END
