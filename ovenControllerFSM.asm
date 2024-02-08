@@ -61,8 +61,8 @@ TIMER0_RELOAD         EQU (0x10000-(CLK/4096))    ; For 2kHz square wave
 ; Pin definitions + Hardware Wiring
 START_PIN             EQU P1.5 ; change to correct pin later
 ; STOP_PIN              EQU P3.0 ; change to correct pin later
-; INC_TIME_PIN          EQU P1.1 ; change to correct pin later
-; INC_TEMP_PIN          EQU P1.1 ; change to correct pin later
+INC_TIME_PIN          EQU P3.0 ; change to correct pin later
+INC_TEMP_PIN          EQU P0.4 ; change to correct pin later
 CHANGE_MENU_PIN       EQU P1.6 ; change to correct pin later
 ; SSR_OUTPUT_PIN        EQU P3.0 ; change to correct pin later
 
@@ -291,10 +291,11 @@ Initilize_All:
         mov     MENU_STATE, a ; set menu state to 0 
 
         ; mov     temp_soak, #0x250
-        mov     temp_soak+0, #low(0x250)
+        mov     temp_soak+0, #low (0x250)
         mov     temp_soak+1, #high(0x250)
         mov     time_soak, #0x5
-        mov     temp_refl, #0x90
+        mov     temp_refl+0, #low (0x90)
+        mov     temp_refl+1, #high(0x90)
         mov     time_refl, #0x1
 
         ; incrementing BCD values greater than 0x99: 
@@ -429,45 +430,61 @@ OVEN_FSM:
         ret
 
 MENU_FSM:        
-	jb CHANGE_MENU_PIN, enterMenuStateCheck
+	jb CHANGE_MENU_PIN, checkTimeInc
 	Wait_Milli_Seconds(#50)	      ; debounce delay
-	jb CHANGE_MENU_PIN, enterMenuStateCheck  ; 
+	jb CHANGE_MENU_PIN, checkTimeInc  ; 
 	jnb CHANGE_MENU_PIN, $        ; wait for release
         mov a, MENU_STATE 
         inc a
         mov MENU_STATE, a 
 
-        ; ; increment is checked with a seperate cascade that's outside the FSM
-        ; ; I wanted to keep FSM state outputs seperate from push button checks - George
-        ; checkTimeInc:
-	; jb INC_TIME_PIN, checkTempInc
-	; Wait_Milli_Seconds(#50)	      
-	; jb INC_TIME_PIN, checkTempInc  ; 
-	; jnb INC_TIME_PIN, $ 
-        ; cjne a, #MENU_STATE_SOAK, incTimeReflow
-        ;         mov a, time_soak
-        ;         add A, #5
-        ;         mov time_soak, a       
-        ;         sjmp checkTempInc       
-        ; incTimeReflow:
-        ;         mov a, time_refl
-        ;         add A, #5
-        ;         mov time_refl, a
+        ; increment is checked with a seperate cascade that's outside the FSM
+        ; I wanted to keep FSM state outputs seperate from push button checks - George
+        checkTimeInc:
+	jb INC_TIME_PIN, checkTempInc
+	Wait_Milli_Seconds(#50)	      
+	jb INC_TIME_PIN, checkTempInc  ; 
+	jnb INC_TIME_PIN, $ 
+        cjne a, #MENU_STATE_SOAK, incTimeReflow
+                mov a, time_soak
+                add A, #5
+                DA A
+                mov time_soak, a       
+                sjmp checkTempInc       
+        incTimeReflow:
+                mov a, time_refl
+                add A, #5
+                DA A
+                mov time_refl, a
         
-        ; checkTempInc:
-	; jb INC_TEMP_PIN, enterMenuStateCheck
-	; Wait_Milli_Seconds(#50)	      
-	; jb INC_TEMP_PIN, enterMenuStateCheck    
-	; jnb INC_TEMP_PIN, $        
-        ; cjne a, #MENU_STATE_SOAK, incTempReflow  
-        ;         mov a, temp_soak
-        ;         add A, #5
-        ;         mov temp_soak, a       
-        ;         sjmp enterMenuStateCheck       
-        ; incTempReflow:
-        ;         mov a, temp_refl
-        ;         add A, #5
-        ;         mov temp_refl, a
+        checkTempInc:
+	jb INC_TEMP_PIN, enterMenuStateCheck
+	Wait_Milli_Seconds(#50)	      
+	jb INC_TEMP_PIN, enterMenuStateCheck    
+	jnb INC_TEMP_PIN, $        
+        cjne a, #MENU_STATE_SOAK, incTempReflow  ; issues 295 -> 700
+                mov a, temp_soak+0
+                add a, #0x5
+                DA a
+                mov temp_soak+0, a
+                jnz tempSoakIncDone
+                mov a, temp_soak+1
+                add a, #0x5
+                DA a
+                mov temp_soak+1, a
+                tempSoakIncDone:
+                sjmp enterMenuStateCheck       
+        incTempReflow:
+                mov a, temp_refl+0
+                add a, #0x5
+                DA a
+                mov temp_refl+0, a
+                jnz tempReflIncDone
+                mov a, temp_refl+1
+                add a, #0x5
+                DA a
+                mov temp_refl+1, a
+                tempReflIncDone:
 
         enterMenuStateCheck:
         mov a, MENU_STATE
@@ -501,7 +518,8 @@ MENU_FSM:
         ; display Reflow Menu Options
         Set_Cursor(1, 1)
         Send_Constant_String(#LCD_reflowTemp)
-        Display_BCD (temp_refl)
+        Display_BCD (temp_refl+1)
+        Display_BCD (temp_refl+0)
         Send_Constant_String(#LCD_clearLine)
         Set_Cursor(2, 1)
         Send_Constant_String(#LCD_reflowTime)
