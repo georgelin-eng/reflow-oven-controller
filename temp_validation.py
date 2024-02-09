@@ -1,4 +1,5 @@
 #!/usr/bin/python
+import tkinter
 from tkinter import *
 import time
 import serial
@@ -7,10 +8,10 @@ import sys
 import numpy as np
 import pandas as pd
 import kconvert
-import atexit
+
 
 serc = serial.Serial(
-    port='COM9',
+    port='COM10',
     baudrate=115200,
     parity=serial.PARITY_NONE,
     stopbits=serial.STOPBITS_TWO,
@@ -18,7 +19,7 @@ serc = serial.Serial(
 )
 serc.isOpen()
 
-serm = serial.Serial('COM8', 9600, timeout=0.5)
+serm = serial.Serial('COM15', 9600, timeout=0.5)
 serm.write(b"\x03") # Request prompt from possible multimeter
 pstring = serm.readline() # Read the prompt "=>"
 pstring=pstring.rstrip()
@@ -33,8 +34,12 @@ if len(pstring) > 1:
         serm.write(b"MEAS1?\r\n") # Request first value from multimete
 
 ambtemp = 22
+winsize = 10
 multdata, micdata, avgmicdata = [], [], []
+for i in range(5):
+    micdata.append(22.9756)
 j = 0
+button = 0
 
 #ATTENTION: Make sure the multimeter is configured at 9600 baud, 8-bits, parity none, 1 stop bit, echo Off
 
@@ -44,13 +49,13 @@ def update_cont_temp(i,j):
     strinc = serc.readline()
     #print(strinc)
     valc = float(strinc[0:10])
-    val1 = valc*326/98500.0*0.99+0.00004 #this is how we scale using opamp factor
+    val1 = valc*327.5/98500.0+valc**2*0.000053+valc**3*0.0000035+0.00004 #this is how we scale using opamp factor
                                         #and some extra scaling to make temp reading more accurate
     #print(valc)
     mictemp = val1/(41*0.000001) + ambtemp
     micdata.append(mictemp)
-    if (i == 49):
-        avgtemp = np.sum(micdata[50*j:50*(j+1)])/50
+    if (i == winsize-1):
+        avgtemp = np.sum(micdata[winsize*j:winsize*(j+1)])/winsize
         avgmicdata.append(avgtemp)
         print(f'microcontroller: {avgtemp}')
 
@@ -79,6 +84,8 @@ def update_mult_temp():
         multdata.append(ktemp)
 
 def exit_handler():
+    print(len(avgmicdata))
+    print(len(multdata))
     df = pd.DataFrame(
         {
             "Multimeter Data" : multdata,
@@ -87,13 +94,23 @@ def exit_handler():
     )
     df.to_excel("Proj1.xlsx")
     print('done!')
+    sys.exit()
 
-atexit.register(exit_handler)
+def set_button():
+    global button
+    button = 1
+
+top = tkinter.Tk()
+B = tkinter.Button(top, text="End Program", command = set_button)
+B.pack()
 
 while 1:
-    for i in range(50):
+    top.update()
+    for i in range(winsize):
         update_cont_temp(i,j)
     update_mult_temp()
     j+=1
+    if (button == 1):
+        exit_handler()
 
 
