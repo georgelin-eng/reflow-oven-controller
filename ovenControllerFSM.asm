@@ -86,7 +86,13 @@ MENU_STATE_REFLOW     EQU 1
 MENU_STATE_TEST       EQU 2
 OVEN_STATE_PREHEAT    EQU 0
 OVEN_STATE_SOAK       EQU 1
-OVEN_STATE_REFLOW     EQU 2
+OVEN_STATE_RAMP2PEAK EQU 2
+OVEN_STATE_REFLOW     EQU 3
+OVEN_STATE_COOLING    EQU 4
+OVEN_STATE_FINISHED   EQU 5
+COOLED_TEMP           EQU 50 ; once cooled to this temperature, the reflow is now "finished"
+COOLED_TEMP_LOAD_MATH EQU COOLED_TEMP*10000 ; use to load up the math
+FINISHED_SECONDS      EQU 10
 
 ; define vectors
 ORG 0x0000 ; Reset vector
@@ -115,7 +121,7 @@ VLED_ADC        : ds 2
 
 OVEN_STATE      : ds 1 ; stores oven FSM state
 MENU_STATE      : ds 1 ; stores menu FSM state
-temp_soak       : ds 2 
+temp_soak       : ds 2  ; should be 1 variable??????????
 ; temp_soak       : ds 2 
 time_soak       : ds 1
 temp_refl       : ds 2
@@ -164,7 +170,11 @@ LCD_clearLine   : db '                ', 0 ; put at end to clear line
 
 preheatMessage  : db 'Preheat', 0
 soakMessage     : db 'Soak', 0
+ramp2peakMessage: db 'Peak to Soak', 0
 reflowMessage   : db 'Reflow', 0
+coolingMessage  : db 'Cooling', 0
+FinishedMessage : db 'Finished!', 0
+stopMessage     : db 'EMERGENCY STOP', 0
 
 ; Messages to display on LCD when in Oven Controller FSM
 
@@ -278,9 +288,9 @@ Timer2_ISR:
         Inc_done:
         ; Check if one second has passed
 	mov	a, Count1ms+0
-	cjne    a, #low(1000), Timer2_ISR_done ; Warning: this instruction changes the carry flag!
+	cjne    a, #low(300), Timer2_ISR_done ; Warning: this instruction changes the carry flag!
 	mov     a, Count1ms+1
-	cjne    a, #high(1000), Timer2_ISR_done	
+	cjne    a, #high(300), Timer2_ISR_done	
 
         ; ---  1s has passed ----
         ; send serial data
@@ -294,7 +304,7 @@ Timer2_ISR:
         ;`    lcall hex2bcd
         ;Send_BCD (bcd+1)
         Send_BCD (seconds_elapsed+0)
-        Send_BCD (seconds_elapsed)
+        ; Send_BCD (seconds_elapsed)
         mov a, #'\r' ; Return character
         lcall putchar
         mov a, #'\n' ; New-line character
@@ -480,7 +490,9 @@ Initilize_All:
 STOP_PROCESS:
         ; Turn everything off
         clr REFLOW_FLAG
-        ; MOV
+        clr IN_OVEN_FLAG
+        MOV OVEN_STATE, #OVEN_STATE_PREHEAT
+        MOV seconds_elapsed, #0
         ljmp PROGRAM_ENTRY
 
 ; Precondition: Has temperature stored in x
@@ -501,7 +513,6 @@ OVEN_FSM:
                 Send_Constant_String(#preheatMessage)
                 Send_Constant_String(#LCD_clearLine)
                 Set_Cursor(2, 1)
-                ; Set_Cursor(2, 1)
                 Display_BCD(seconds_elapsed)
 
                 ;ROHAN
@@ -516,7 +527,8 @@ OVEN_FSM:
                 ;lcall ;send temperature value to serial
                 ljmp STOP_PROCESS ; more then 60 seconds has elapse and we are below 50C ESCAPE
                 
-        Skip_Emergency_exit:        
+        Skip_Emergency_exit:       
+                ; check temperature has reached configured value 
                 load_y (temp_soak) ; this line is sus ; temp_soak is a BCD value
                 lcall x_lteq_y
                 jnb mf, noChange_preheatState
@@ -525,7 +537,7 @@ OVEN_FSM:
                 ljmp oven_FSM_done
 
         ovenFSM_soak:
-                cjne a, #OVEN_STATE_SOAK, ovenFSM_reflow
+                cjne a, #OVEN_STATE_SOAK, ovenFSM_Ramp2Peak
                 Set_Cursor(1, 1)
                 Send_Constant_String(#soakMessage)
                 Send_Constant_String(#LCD_clearLine)
@@ -535,27 +547,83 @@ OVEN_FSM:
                 ; check if seconds elapsed > soak time
                 mov a, seconds_elapsed
                 cjne a, time_soak, noChange_soakState
-                mov OVEN_STATE, #OVEN_STATE_REFLOW
+                mov OVEN_STATE, #OVEN_STATE_RAMP2PEAK
                 mov seconds_elapsed, #0 ; reset
                 noChange_soakState:
                 ljmp oven_FSM_done
 
+        ovenFSM_Ramp2Peak:
+                cjne a, #OVEN_STATE_RAMP2PEAK, ovenFSM_reflow
+                Set_Cursor(1, 1)
+                Send_Constant_String(#ramp2peakMessage)
+                Send_Constant_String(#LCD_clearLine)
+                Set_Cursor(2, 1)
+                Display_BCD(seconds_elapsed)
+                mov seconds_elapsed, #0 ; reset
+
+                ; check that temperature for reflow is reached, then exit                
+                load_y (temp_refl) ; this line is sus ; temp_soak is a BCD value
+                lcall x_lteq_y
+                jnb mf, noChange_ramp2peak
+                mov OVEN_STATE, #OVEN_STATE_REFLOW
+                noChange_ramp2peak:
+                ljmp oven_FSM_done
+                
         ovenFSM_reflow:
-                cjne a, #OVEN_STATE_REFLOW, ovenFSM_exit
+                cjne a, #OVEN_STATE_REFLOW, ovenFSM_cooling
                 Set_Cursor(1, 1)
                 Send_Constant_String(#reflowMessage)
                 Send_Constant_String(#LCD_clearLine)
                 Set_Cursor(2, 1)
                 Display_BCD(seconds_elapsed)
+
+                ; check if seconds elapsed > reflow time
+                mov a, seconds_elapsed
+                cjne a, time_refl, noChange_reflowState
+                mov OVEN_STATE, #OVEN_STATE_COOLING
+                mov seconds_elapsed, #0 ; reset
+                noChange_reflowState:
+                ljmp oven_FSM_done
+
+        ovenFSM_cooling:
+                cjne a, #OVEN_STATE_COOLING, ovenFSM_finished
+                Set_Cursor(1, 1)
+                Send_Constant_String(#coolingMessage)
+                Send_Constant_String(#LCD_clearLine)
+                Set_Cursor(2, 1)
+                Display_BCD(seconds_elapsed)
+                mov seconds_elapsed, #0 ; reset
+
+                ; once temperature is low (compare with temp constant)
+                load_y (COOLED_TEMP_LOAD_MATH) ; this line is sus ; temp_soak is a BCD value
+                lcall x_lteq_y
+                jnb mf, noChange_cooling
+                mov OVEN_STATE, #OVEN_STATE_FINISHED
+                noChange_cooling:
+                ljmp oven_FSM_done
+        
+        ovenFSM_finished:
+                cjne a, #OVEN_STATE_FINISHED, ovenFSM_exit
+                Set_Cursor(1, 1)
+                Send_Constant_String(#FinishedMessage)
+                Send_Constant_String(#LCD_clearLine)
+                Set_Cursor(2, 1)
+                Display_BCD(seconds_elapsed)
+
+                ; go back to Start Screen after a certain number of seconds
+                mov a, seconds_elapsed
+                cjne a, #FINISHED_SECONDS, noChange_finishedState
+                ljmp PROGRAM_ENTRY
+                noChange_finishedState:
                 ljmp oven_FSM_done
 
         ovenFSM_exit:
                 mov OVEN_STATE, #OVEN_STATE_PREHEAT
-                ljmp oven_FSM_done
+                ; ljmp oven_FSM_done
                 lcall STOP_PROCESS ; Exit oven FSM, turn power off, return to program entry
                 
         oven_FSM_done:
-                ljmp OVEN_FSM ; return to start
+                ljmp OVEN_FSM ; return to start of oven FSM ; this is a blocking FSM
         
         ret ; technically unncessary
 
@@ -606,7 +674,8 @@ MENU_FSM:
                         DA a
                         mov temp_refl+1, a
         tempReflIncDone:
-                
+
+        ; ---------------- FSM State Check ---------------- ;  
         enterMenuStateCheck:
                 mov a, MENU_STATE
 

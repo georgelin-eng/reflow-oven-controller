@@ -12,8 +12,16 @@ xsize=250 #remain cognizant of delays from division
 
 
 # configure the serial port
+# ser = serial.Serial(
+#     port='/dev/cu.usbserial-D30HKNUK', #change to whichever serial port we end up using (e.g. COM5)
+#     baudrate=115200,
+#     parity=serial.PARITY_NONE,
+#     stopbits=serial.STOPBITS_TWO,
+#     bytesize=serial.EIGHTBITS
+# )
+# ser.isOpen()qv 2
 ser = serial.Serial(
-    port='/dev/cu.usbserial-D30HKNUK', #change to whichever serial port we end up using (e.g. COM5)
+    port='COM5', #change to whichever serial port we end up using (e.g. COM5)
     baudrate=115200,
     parity=serial.PARITY_NONE,
     stopbits=serial.STOPBITS_TWO,
