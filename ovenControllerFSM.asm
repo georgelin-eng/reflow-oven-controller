@@ -74,7 +74,7 @@ TIMER0_RELOAD         EQU (0x10000-(CLK/4096))    ; Sound ISR For 2kHz square wa
 
 ; Pin definitions + Hardware Wiring
 START_PIN             EQU P1.5 ; change to correct pin later
-; STOP_PIN              EQU P3.0 ; change to correct pin later
+STOP_PIN              EQU P1.0 ; change to correct pin later
 INC_TIME_PIN          EQU P3.0 ; change to correct pin later
 INC_TEMP_PIN          EQU P0.4 ; change to correct pin later
 CHANGE_MENU_PIN       EQU P1.6 ; change to correct pin later
@@ -485,12 +485,8 @@ STOP_PROCESS:
 
 ; Precondition: Has temperature stored in x
 OVEN_FSM:
-        ; check stop button press
-        ; jb STOP_PIN, enterOvenStateCheck
-	; Wait_Milli_Seconds(#50)	      ; debounce delay
-	; jb STOP_PIN, enterOvenStateCheck  ; 
-	; jnb STOP_PIN, $        ; wait for release
-        ; lcall STOP_PROCESS ; 
+        check_Push_Button(STOP_PIN, enterOvenStateCheck)
+        lcall STOP_PROCESS
 
         ; check oven state if stop button is not pressed
         enterOvenStateCheck:

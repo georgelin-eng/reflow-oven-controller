@@ -1,8 +1,5 @@
 Menu FSM
-- Push button macros for incrementing temp and time values
-
-Oven controller code 
-- setup timer 2 ISR with 1s timer and use to change oven states automatically (ignore temp for now)
+- Add states so that current push buttons can be used for inc/dec for time and temp for soak/reflow. This will help save on push buttons
 
 
 
