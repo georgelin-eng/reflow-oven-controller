@@ -70,14 +70,13 @@ TIMER1_RELOAD         EQU (0x100-(CLK/(16*BAUD))) ; Serial ISR
 TIMER2_RELOAD         EQU (65536-(CLK/1000))    ; 1ms Delay ISR
 TIMER0_RELOAD         EQU (0x10000-(CLK/4096))    ; Sound ISR For 2kHz square wave
 
-; Pin definitions + Hardware Wiring
+; Pin definitions + Hardware Wiring 
 START_PIN             EQU P1.5 ; change to correct pin later
-STOP_PIN              EQU P1.0 ; change to correct pin later
-INC_TIME_PIN          EQU P0.4 ; change to correct pin later
+CHANGE_MENU_PIN       EQU P1.6 ; change to correct pin later 
 INC_TEMP_PIN          EQU P3.0 ; change to correct pin later
-CHANGE_MENU_PIN       EQU P3.0 ; change to correct pin later
-PWM_OUT               EQU P1.6 ; change to correct pin later
-; SSR_OUTPUT_PIN        EQU P3.0 ; change to correct pin later
+INC_TIME_PIN          EQU P0.4 ; change to correct pin later
+STOP_PIN              EQU P1.0 ; change to correct pin later
+PWM_OUT               EQU P1.1 ; change to correct pin later
 
 ; Menu states
 MENU_STATE_SOAK       EQU 0
@@ -96,6 +95,10 @@ OVEN_STATE_FINISHED   EQU 5
 COOLED_TEMP           EQU 50 ; once cooled to this temperature, the reflow is now "finished"
 COOLED_TEMP_LOAD_MATH EQU COOLED_TEMP*10000 ; use to load up the math
 FINISHED_SECONDS      EQU 10
+MAX_TIME              EQU 90
+MIN_TIME              EQU 15
+MAX_TEMP              EQU 250
+MIN_TEMP              EQU 100
 
 ; define vectors
 ORG 0x0000 ; Reset vector
@@ -440,9 +443,9 @@ Initilize_All:
 
         ; mov     temp_soak, #0x250
         mov     temp_soak, #150
-        mov     time_soak, #5
+        mov     time_soak, #MIN_TIME
         mov     temp_refl, #220
-        mov     time_refl, #5
+        mov     time_refl, #MIN_TIME
         
         ; Oven configuration
         mov     OVEN_STATE, #OVEN_STATE_PREHEAT
@@ -489,7 +492,7 @@ STOP_PROCESS:
         MOV     pwm, #0
         ljmp    PROGRAM_ENTRY
 
-SSR_FSM: 
+; SSR_FSM: 
 
 
 ; Precondition: Has temperature stored in x
@@ -652,11 +655,22 @@ MENU_FSM:
                         add     A, #5        
                         mov     time_soak, a 
 
+                        ; check if time_soak will need to reset - assumes multiples of 5
+                        ; +5 to constants so they display on LCD b/f reseting
+                        cjne a, #(MAX_TIME+5), checkTempInc 
+                        mov a, #MIN_TIME
+                        mov time_soak, a
+
                         sjmp checkTempInc       
                 incTimeReflow:
                         mov     a, time_refl
                         add     A, #5
                         mov     time_refl, a
+
+                        cjne a, #(MAX_TIME+5), checkTempInc
+                        mov a, #MIN_TIME
+                        mov time_refl, a
+
 
          checkTempInc:
                 check_Push_Button(INC_TEMP_PIN, enterMenuStateCheck)
@@ -665,11 +679,19 @@ MENU_FSM:
                         add     A, #5        
                         mov     temp_soak, a 
 
+                        cjne a, #(MAX_TEMP+5), enterMenuStateCheck
+                        mov a, #MIN_TEMP
+                        mov temp_soak, a
+
                         sjmp enterMenuStateCheck       
                 incTempReflow:
                         mov     a, temp_refl
                         add     A, #5
                         mov     temp_refl, a
+
+                        cjne a, #(MAX_TEMP+5), enterMenuStateCheck
+                        mov a, #MIN_TEMP
+                        mov temp_refl, a
 
         ; ---------------- FSM State Check ---------------- ;  
         enterMenuStateCheck:
