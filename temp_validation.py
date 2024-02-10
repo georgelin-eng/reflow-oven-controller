@@ -19,37 +19,41 @@ serc = serial.Serial(
 )
 serc.isOpen()
 
-serm = serial.Serial('COM15', 9600, timeout=0.5)
-serm.write(b"\x03") # Request prompt from possible multimeter
-pstring = serm.readline() # Read the prompt "=>"
-pstring=pstring.rstrip()
-pstring=pstring.decode()
-# print(pstring)
-if len(pstring) > 1:
-   if pstring[1]=='>':
-        serm.timeout=3  # Three seconds timeout to receive data should be enough
-        serm.write(b"VDC; RATE S; *IDN?\r\n") # Measure DC voltage, set scan rate to 'Slow' for max resolution, get multimeter ID
-        serm.readline()
-        serm.readline() # Read and discard the prompt "=>"
-        serm.write(b"MEAS1?\r\n") # Request first value from multimete
+serm = serial.Serial('COM8', 9600, timeout=0.5)
 
-ambtemp = 22
+ambtemp = 0
 winsize = 10
 multdata, micdata, avgmicdata = [], [], []
 for i in range(5):
     micdata.append(22.9756)
 j = 0
 button = 0
+ambset = 0
 
 #ATTENTION: Make sure the multimeter is configured at 9600 baud, 8-bits, parity none, 1 stop bit, echo Off
 
+def update_amb_temp():
+    strinc = serc.readline()
+    valc2 = float(strinc[10:19])
+
+    global ambtemp
+    ambtemp = valc2*100-273.15
+    print(ambtemp)
 
 def update_cont_temp(i,j):
     # read from microcontroller and append to micdata
     strinc = serc.readline()
-    #print(strinc)
+    
     valc = float(strinc[0:10])
-    val1 = valc*327.5/98500.0+valc**2*0.000053+valc**3*0.0000035+0.00004 #this is how we scale using opamp factor
+    valc2 = float(strinc[10:19])
+
+    global ambtemp
+    ambtemp = valc2*100-273.15
+    #ambtemp = 22
+
+    #print(ambtemp)
+    #print(f'{strinc} = {valc} + {valc2}')
+    val1 = valc*327.5/98500.0+valc**2*0.00001+valc**3*0.00000+0.00003 #this is how we scale using opamp factor
                                         #and some extra scaling to make temp reading more accurate
     #print(valc)
     mictemp = val1/(41*0.000001) + ambtemp
@@ -100,9 +104,41 @@ def set_button():
     global button
     button = 1
 
+
+def set_ambtemp():
+    global ambset
+    ambset = 1
+
+
 top = tkinter.Tk()
+
+setB = tkinter.Button(top, text = f"Set ambient temp to {ambtemp}", command = set_ambtemp)
+setB.pack()
+
+while ambset == 0:
+    top.update()
+    update_amb_temp()
+    setB.config(text=f"Set ambient temp to {ambtemp}")
+
+
+
+serm.write(b"\x03") # Request prompt from possible multimeter
+pstring = serm.readline() # Read the prompt "=>"
+pstring=pstring.rstrip()
+pstring=pstring.decode()
+# print(pstring)
+if len(pstring) > 1:
+   if pstring[1]=='>':
+        serm.timeout=3  # Three seconds timeout to receive data should be enough
+        serm.write(b"VDC; RATE S; *IDN?\r\n") # Measure DC voltage, set scan rate to 'Slow' for max resolution, get multimeter ID
+        serm.readline()
+        serm.readline() # Read and discard the prompt "=>"
+        serm.write(b"MEAS1?\r\n") # Request first value from multimeter
+
+setB.destroy()
 B = tkinter.Button(top, text="End Program", command = set_button)
 B.pack()
+
 
 while 1:
     top.update()
