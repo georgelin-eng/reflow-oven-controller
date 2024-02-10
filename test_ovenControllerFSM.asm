@@ -23,14 +23,48 @@ CLJNE mac
 endmac
 
 ; Push button macro - It does not work :( - check if it works now, moved location
-check_Push_Button MAC
-    jb %0, %1
-    Wait_Milli_Seconds(#50)
-    jb %0, %1
-    jnb %0, $
+; check_Push_Button MAC
+;     jb %0, %1
+;     Wait_Milli_Seconds(#50)
+;     jb %0, %1
+;     jnb %0, $
+; ENDMAC
+
+; check_Push_Button MAC ; new one with multiplexed buttons
+;     clr %0
+;     jb SHARED_PIN, %1
+;     Wait_Milli_Seconds(#50)
+;     jb SHARED_PIN, %1
+;     jnb SHARED_PIN, $
+;     Wait_Milli_Seconds(#50)
+; ENDMAC
+
+; Params
+; check_Push_Button(PIN, variable_flag, label)
+check_Push_Button MAC ; new one with multiplexed buttons
+        setb SHARED_PIN
+        ; check if any push buttons are pressed
+        clr START_PIN             
+        clr CHANGE_MENU_PIN       
+        clr INC_TEMP_PIN          
+        clr INC_TIME_PIN          
+        clr STOP_PIN
+
+        ; debounce
+        jb SHARED_PIN, %1
+        Wait_Milli_Seconds(#50)
+        jb SHARED_PIN, %1
+
+        ; Set the LCD data pins to logic 1
+        setb START_PIN
+        setb CHANGE_MENU_PIN
+        setb INC_TEMP_PIN
+        setb INC_TIME_PIN
+        setb STOP_PIN
+
+        ; Wait_Milli_Seconds(#50)
+
 ENDMAC
-
-
 
 $NOLIST
 $MODN76E003
@@ -73,12 +107,14 @@ TIMER2_RELOAD         EQU (65536-(CLK/1000))    ; 1ms Delay ISR
 TIMER0_RELOAD         EQU (0x10000-(CLK/4096))    ; Sound ISR For 2kHz square wave
 
 ; Pin definitions + Hardware Wiring 
-START_PIN             EQU P1.5 ; change to correct pin later
-CHANGE_MENU_PIN       EQU P1.6 ; change to correct pin later 
-INC_TEMP_PIN          EQU P3.0 ; change to correct pin later
-INC_TIME_PIN          EQU P0.4 ; change to correct pin later
-STOP_PIN              EQU P1.0 ; change to correct pin later
+START_PIN             EQU P0.0 ; change to correct pin later
+CHANGE_MENU_PIN       EQU P0.1 ; change to correct pin later 
+INC_TEMP_PIN          EQU P0.2 ; change to correct pin later
+INC_TIME_PIN          EQU P1.3 ; change to correct pin later
+STOP_PIN              EQU P0.3 ; change to correct pin later
 PWM_OUT               EQU P1.1 ; change to correct pin later
+
+SHARED_PIN            EQU P1.5 ; 
 
 ; Menu states
 MENU_STATE_SOAK       EQU 0
@@ -496,15 +532,43 @@ STOP_PROCESS:
 
 ; SSR_FSM: 
 
+; configure_LCD_multiplexing: 
+;         setb SHARED_PIN
+
+;         ; check if any push buttons are pressed
+;         clr START_PIN             
+;         clr CHANGE_MENU_PIN       
+;         clr INC_TEMP_PIN          
+;         clr INC_TIME_PIN          
+;         clr STOP_PIN
+
+;         ; debounce
+;         jb SHARED_PIN, enterOvenStateCheck
+;         Wait_Milli_Seconds(#50)
+;         jb SHARED_PIN, enterOvenStateCheck
+
+;         ; Set the LCD data pins to logic 1
+;         setb START_PIN
+;         setb CHANGE_MENU_PIN
+;         setb INC_TEMP_PIN
+;         setb INC_TIME_PIN
+;         setb STOP_PIN
+
+;         ; Wait_Milli_Seconds(#50)
+
+;         ret
 
 ; Precondition: Has temperature stored in x
 OVEN_FSM:
+
         check_Push_Button (STOP_PIN, enterOvenStateCheck)
+        setb STOP_PIN
         lcall   STOP_PROCESS
 
         ; check oven state if stop button is not pressed
         enterOvenStateCheck:
                 mov     a, OVEN_STATE
+                setb STOP_PIN
            
         ovenFSM_preheat:
                 ; long jump for relative offset
@@ -642,16 +706,21 @@ OVEN_FSM:
         
         ret ; technically unncessary
 
-MENU_FSM:        
+MENU_FSM: 
+        lcall configure_LCD_multiplexing  
+
         mov     a, MENU_STATE 
         check_Push_Button (CHANGE_MENU_PIN, checkTimeInc) ; increments menu state
         inc     a
         mov     MENU_STATE, a 
+        setb    CHANGE_MENU_PIN
 
         ; increment is checked with a seperate cascade that's outside the FSM
         ; I wanted to keep FSM state outputs seperate from push button checks - George
         checkTimeInc:
+                setb CHANGE_MENU_PIN
                 check_Push_Button(INC_TIME_PIN, checkTempInc)
+                setb INC_TIME_PIN
                 cjne a, #MENU_STATE_SOAK, incTimeReflow
                         mov     a, time_soak 
                         add     A, #5        
@@ -675,7 +744,9 @@ MENU_FSM:
 
 
          checkTempInc:
+                setb INC_TIME_PIN
                 check_Push_Button(INC_TEMP_PIN, enterMenuStateCheck)
+                setb INC_TEMP_PIN
                 cjne a, #MENU_STATE_SOAK, incTempReflow
                         mov     a, temp_soak 
                         add     A, #5        
@@ -697,6 +768,7 @@ MENU_FSM:
 
         ; ---------------- FSM State Check ---------------- ;  
         enterMenuStateCheck:
+                setb INC_TEMP_PIN
                 mov     a, MENU_STATE
 
         menuFSM_configSoak:
@@ -741,6 +813,7 @@ main_program:
         mov     sp, #0x7f
         lcall   Initilize_All
         lcall   LCD_4BIT
+        lcall   configure_LCD_multiplexing
 
         ; Default display - 
         ; Reflow oven controller 
@@ -753,9 +826,11 @@ main_program:
 
         checkStartButton: ; assumed negative logic - used a label for an easy ljmp in the future
                 check_Push_Button(START_PIN, noStartButtonPress)
+                setb    START_PIN
                 ljmp    enter_oven_fsm ; successful button press, enter oven FSM   
 
         noStartButtonPress:
+                setb    START_PIN
                 ; if the 'IN_MENU' flag is set, always enter into the menu FSM, this is so that the menu FSM can always be entered
                 ; creates an infinite loop that will always display menu once entered - broken if START button pressed
                 jnb     IN_MENU_FLAG, checkMenuButtonPress
@@ -765,10 +840,12 @@ main_program:
         checkMenuButtonPress:
                 ; check for enter menu button press (reusing increment menu pin)
                 check_Push_Button(CHANGE_MENU_PIN, noMenuButtonPress)
+                setb CHANGE_MENU_PIN
                 ; setb IN_MENU_FLAG; successful button press, enter menu FSM loop ; - THIS LINE CAUSES THE BUG
                 ljmp    setMenuFlag
                 
         noMenuButtonPress:
+                setb CHANGE_MENU_PIN
                 ljmp    checkStartButton ; this line does not execute if ljmp setMenuFlag is there?!?!?
 
         enter_oven_fsm:
