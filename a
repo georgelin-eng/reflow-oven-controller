@@ -1,0 +1,20 @@
+#!/bin/bash
+prompt="Please select a file to compile:"
+options=( $(find *.asm | xargs -0) )
+
+PS3="$prompt "
+echo ""
+select opt in "${options[@]}" "Quit" ; do 
+    if (( REPLY == 1 + ${#options[@]} )) ; then
+        exit
+
+    elif (( REPLY > 0 && REPLY <= ${#options[@]} )) ; then
+        echo  "Compiling $opt"
+        ./a51 -l $opt
+        break
+
+    else
+        echo "Invalid option. Try another one."
+    fi
+done
+echo ""

@@ -64,7 +64,7 @@ LCD_PB:
 	clr P0.0
 	clr P0.1
 	clr P0.2
-	clr P0.3
+	clr P0.3 
 	clr P1.3
 	jb P1.5, LCD_PB_Done
 	
