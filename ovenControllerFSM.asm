@@ -526,7 +526,7 @@ OVEN_FSM:
                 ;Emergency exit process; tested, works
                 setb    REFLOW_FLAG
                 mov     a, exit_seconds
-                cjne    a, #10, Skip_Emergency_exit
+                cjne    a, #60, Skip_Emergency_exit
                 load_y  (50)
                 lcall   x_gteq_y
                 jb      mf, Skip_Emergency_exit
