@@ -280,10 +280,10 @@ check_Push_Button:
         jb SHARED_PIN, LCD_PB_DONE; end immediately if none are pressed
 
         ; debounce
-        jb SHARED_PIN, %1
+        ;jb SHARED_PIN, %1
         Wait_Milli_Seconds(#50)
-        jb SHARED_PIN, %1
-
+        ;jb SHARED_PIN, %1
+        jb P1.5, LCD_PB_DONE
         ; Set the LCD data pins to logic 1
         setb START_PIN ; jump to enterOvenStateCheck if pressed
         setb CHANGE_MENU_PIN ; jump to menuState is pressed???

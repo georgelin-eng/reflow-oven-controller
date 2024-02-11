@@ -311,7 +311,7 @@ check_Push_Button:
         setb INC_TIME_PIN
         ; if flag is one, jumpt to checkTimeInc
         ;cjne PB_INC_TIME_PIN, #1, checkTimeInc_FALSE ;cjnes dont work with flags
-        jump_flags_equal(FLAG_THAT_IS_1, PB_INC_TIME_PIN, checkTimeInc)
+        jump_flags_equal(FLAG_THAT_IS_1, PB_INC_TIME_PIN, checkTimeInc_Temp)
         ljmp checkTimeInc_FALSE
 
         checkTimeInc_FALSE:
@@ -321,7 +321,7 @@ check_Push_Button:
         mov PB_START_PIN, c
         setb START_PIN
         ; if flag is one, jump to enterOvenStateCheck
-        jump_flags_equal(PB_START_PIN, FLAG_THAT_IS_1,enterOvenStateCheck)
+        jump_flags_equal(PB_START_PIN, FLAG_THAT_IS_1,enterOvenStateCheck_Temp)
         ;ljmp enterOvenStateCheck
 
         enterOvenStateCheck_FALSE:
@@ -331,17 +331,17 @@ check_Push_Button:
         mov PB_CHANGE_MENU_PIN, c
         setb CHANGE_MENU_PIN
         ; if flag is one, jump to menu state if pressed 
-        jump_flags_equal(PB_CHANGE_MENU_PIN, FLAG_THAT_IS_1, menuState)
+        jump_flags_equal(PB_CHANGE_MENU_PIN, FLAG_THAT_IS_1, enterMenuStateCheck_Temp)
         ;ljmp menuState
 
-        menuState_FALSE:
+        enterMenuStateCheck_False:
         ; P0.2
         clr INC_TEMP_PIN
         mov c, SHARED_PIN
         mov PB_INC_TEMP_PIN, c
         setb INC_TEMP_PIN
         ; if flag is one, jump to checkTempInc
-        jump_flags_equal(PB_INC_TEMP_PIN, FLAG_THAT_IS_1, checkTempInc)
+        jump_flags_equal(PB_INC_TEMP_PIN, FLAG_THAT_IS_1, checkTempInc_Temp)
         ;ljmp checkTempInc
 
         checkTempInc_FALSE:
@@ -351,7 +351,7 @@ check_Push_Button:
         mov PB_STOP_PIN, c
         setb STOP_PIN
         ; if flag is one, jump to stop_process
-        jump_flags_equal(PB_STOP_PIN, FLAG_THAT_IS_1, STOP_PROCESS)
+        jump_flags_equal(PB_STOP_PIN, FLAG_THAT_IS_1, STOP_PROCESS_Temp)
         ;ljmp STOP_PROCESS
 
         STOP_PROCESS_FALSE:
@@ -383,6 +383,17 @@ Send_BCD mac
                 lcall   putchar
                 pop     acc
 ret
+; TEMP JUMP LOCATIONS ;
+checkTimeInc_Temp:
+        ljmp checkTimeInc
+enterOvenStateCheck_Temp:
+        ljmp enterOvenStateCheck
+enterMenuStateCheck_Temp:
+        ljmp enterMenuStateCheck
+checkTempInc_Temp:
+        ljmp checkTempInc_Temp
+STOP_PROCESS_Temp:
+        ljmp STOP_PROCESS
 
 ;---------------------------------;
 ; Routine to initialize the ISR   ;
