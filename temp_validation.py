@@ -11,7 +11,7 @@ import kconvert
 
 
 serc = serial.Serial(
-    port='COM10',
+    port='COM16',
     baudrate=115200,
     parity=serial.PARITY_NONE,
     stopbits=serial.STOPBITS_TWO,
@@ -19,7 +19,7 @@ serc = serial.Serial(
 )
 serc.isOpen()
 
-serm = serial.Serial('COM8', 9600, timeout=0.5)
+serm = serial.Serial('COM14', 9600, timeout=0.5)
 
 ambtemp = 0
 winsize = 10
@@ -33,12 +33,12 @@ ambset = 0
 #ATTENTION: Make sure the multimeter is configured at 9600 baud, 8-bits, parity none, 1 stop bit, echo Off
 
 def update_amb_temp():
-    strinc = serc.readline()
-    valc2 = float(strinc[10:19])
+   strinc = serc.readline()
+   valc2 = float(strinc[10:19])
 
-    global ambtemp
-    ambtemp = valc2*100-273.15
-    print(ambtemp)
+   global ambtemp
+   ambtemp = valc2*100-273.15
+   print(ambtemp)
 
 def update_cont_temp(i,j):
     # read from microcontroller and append to micdata
@@ -112,13 +112,13 @@ def set_ambtemp():
 
 top = tkinter.Tk()
 
-setB = tkinter.Button(top, text = f"Set ambient temp to {ambtemp}", command = set_ambtemp)
+setB = tkinter.Button(top, text = f"Set ambient temp to {round(ambtemp,2)}", command = set_ambtemp)
 setB.pack()
 
 while ambset == 0:
     top.update()
     update_amb_temp()
-    setB.config(text=f"Set ambient temp to {ambtemp}")
+    setB.config(text=f"Set ambient temp to {round(ambtemp,2)}")
 
 
 
