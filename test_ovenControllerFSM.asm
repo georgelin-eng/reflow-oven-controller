@@ -436,8 +436,8 @@ Timer2_ISR:
         ; ---  1s has passed ----
   
         ; debugging
-        mov a,  pwm_counter
-        lcall   SendToSerialPort
+        ;mov a,  pwm_counter
+        ;lcall   SendToSerialPort
         mov a,  #'\r' ; Return character
         lcall   putchar
         mov a,  #'\n' ; New-line character
