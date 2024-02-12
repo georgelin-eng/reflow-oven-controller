@@ -140,18 +140,17 @@ TIMER1_RELOAD         EQU (0x100-(CLK/(16*BAUD))) ; Serial ISR
 TIMER2_RELOAD         EQU (65536-(CLK/1000))    ; 1ms Delay ISR
 TIMER0_RELOAD         EQU (0x10000-(CLK/4096))    ; Sound ISR For 2kHz square wave
 
-; Pin definitions + Hardware Wiring 
-; Layout
+; Push button Layout 
 ; {Start} {Stop} {Change Menu} {Inc Temp} {Inc Time}
+; Pin definitions
 START_PIN             EQU P1.3 
+STOP_PIN              EQU P0.0  
 CHANGE_MENU_PIN       EQU P0.1 
 INC_TEMP_PIN          EQU P0.2  
 INC_TIME_PIN          EQU P0.3  
-STOP_PIN              EQU P0.0  
 SHARED_PIN            EQU P1.5 
 
 PWM_OUT               EQU P1.2 ; Pin 13
-
 
 ; Menu states
 MENU_STATE_SOAK       EQU 0
@@ -436,8 +435,8 @@ Timer2_ISR:
         ; ---  1s has passed ----
   
         ; debugging
-        mov a,  pwm_counter
-        lcall   SendToSerialPort
+        ;mov a,  pwm_counter
+        ;lcall   SendToSerialPort
         mov a,  #'\r' ; Return character
         lcall   putchar
         mov a,  #'\n' ; New-line character
