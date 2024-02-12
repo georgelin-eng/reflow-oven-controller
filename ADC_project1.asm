@@ -296,33 +296,33 @@ Forever:
 
 
 
-	;Load_y(803);multiplying V pin by 80.3153
-	;lcall mul32
+	Load_y(803);multiplying V pin by 80.3153
+	lcall mul32
 	
-	;Load_y(220000) ;adding 22, will change to ambient later
-	;lcall add32
+	Load_y(220000) ;adding 22, will change to ambient later
+	lcall add32
 	
-	;use put char to put individual characters 
+	; use put char to put individual characters 
 	; Convert to BCD and display
 	lcall hex2bcd
 	
 	lcall Display_formated_BCD
 	
-	;Load_y(27305)
-	;lcall sub32
-	;lcall hex2bcd
+	Load_y(27305)
+	lcall sub32
+	lcall hex2bcd
 	
 	lcall Send_formated_BCD
 		
-	;mov R2, #250
-	;lcall waitms
-	;mov R2, #250
-	;lcall waitms
+	mov R2, #250
+	lcall waitms
+	mov R2, #250
+	lcall waitms
     
 	
-	; Wait 500 ms between conversions
-	;mov R2, #250
-	;lcall waitms
+	;  Wait 500 ms between conversions
+	mov R2, #250
+	lcall waitms
 	mov R2, #10
 	lcall waitms
 	

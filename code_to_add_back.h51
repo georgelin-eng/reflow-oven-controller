@@ -1,0 +1,276 @@
+ 
+; Messages to display on LCD when in Oven Controller FSM
+
+; Send a character using the serial port
+putchar:
+        jnb     TI, putchar
+        clr     TI
+        mov     SBUF, a
+        ret
+
+; Send a constant-zero-terminated string using the serial port
+SendString:
+        clr     A
+        movc    A, @A+DPTR
+        jz      SendStringDone
+        lcall   putchar
+        inc     DPTR
+        sjmp    SendString
+SendStringDone:
+        ret
+
+Display_formated_BCD:
+        Set_Cursor(2, 6)
+        Display_BCD(bcd+3)
+        Display_BCD(bcd+2)
+        Display_char(#'.')
+        Display_BCD(bcd+1)
+        Display_BCD(bcd+0)
+ret
+
+; Eight bit number to display passed in ’a’.
+SendToLCD:
+        mov     b, #100
+        div     ab
+        orl     a, #0x30 ; Convert hundreds to ASCII
+        lcall   ?WriteData ; Send to LCD
+        mov     a, b ; Remainder is in register b
+        mov     b, #10
+        div     ab
+        orl     a, #0x30 ; Convert tens to ASCII
+        lcall   ?WriteData; Send to LCD
+        mov     a, b
+        orl     a, #0x30 ; Convert units to ASCII
+        lcall   ?WriteData; Send to LCD
+        ret
+
+SendToSerialPort:
+        mov b, #100
+        div ab
+        orl a, #0x30 ; Convert hundreds to ASCII
+        lcall putchar ; Send to PuTTY/Python/Matlab
+        mov a, b ; Remainder is in register b
+        mov b, #10
+        div ab
+        orl a, #0x30 ; Convert tens to ASCII
+        lcall putchar ; Send to PuTTY/Python/Matlab
+        mov a, b
+        orl a, #0x30 ; Convert units to ASCII
+        lcall putchar ; Send to PuTTY/Python/Matlab
+        ret
+
+InitSerialPort:
+    ; Since the reset button bounces, we need to wait a bit before
+    ; sending messages, otherwise we risk displaying gibberish!
+    mov R1, #200
+    mov R0, #104
+    djnz R0, $   ; 4 cycles->4*60.285ns*104=25us
+    djnz R1, $-4 ; 25us*200=5.0ms
+
+    ; Now we can proceed with the configuration of the serial port
+	orl	CKCON, #0x10 ; CLK is the input for timer 1
+	orl	PCON, #0x80 ; Bit SMOD=1, double baud rate
+	mov	SCON, #0x52
+	anl	T3CON, #0b11011111
+	anl	TMOD, #0x0F ; Clear the configuration bits for timer 1
+	orl	TMOD, #0x20 ; Timer 1 Mode 2
+	mov	TH1, #TIMER1_RELOAD
+	setb TR1
+        ret
+        
+;jesus' beautiful averaging code, can be used in place of Read_ADC in place where we read
+Average_ADC:
+        Load_x(0)
+        mov R5, #100
+        Sum_loop0:
+        lcall Read_ADC
+        mov y+3, #0
+        mov y+2, #0
+        mov y+1, R1
+        mov y+0, R0
+        lcall add32
+        djnz R5, Sum_loop0
+        load_y(100)
+        lcall div32
+        ret
+
+
+Read_ADC:
+        clr ADCF
+        setb ADCS ;  ADC start trigger signal
+        jnb ADCF, $ ; Wait for conversion complete
+        
+        ; Read the ADC result and store in [R1, R0]
+        mov a, ADCRL
+        anl a, #0x0f
+        mov R0, a
+        mov a, ADCRH  
+        swap a
+        push acc
+        anl a, #0x0f
+        mov R1, a
+        pop acc
+        anl a, #0xf0
+        orl a, R0
+        mov R0, A
+ret
+
+DO_TEMP_READ:
+        ; Read the 2.08V LED voltage connected to AIN0 on pin 6
+        anl ADCCON0, #0xF0
+        orl ADCCON0, #0x00 ; Select channel 0
+
+        lcall Read_ADC
+        ; Save result for later use
+        mov VLED_ADC+0, R0
+        mov VLED_ADC+1, R1
+
+        ; Read the signal connected to AIN7
+        anl ADCCON0, #0xF0
+        orl ADCCON0, #0x07 ; Select channel 7
+        lcall Read_ADC
+        ;lcall Average_ADC ;using in place of Read_ADC function, takes 100 measurements and averages
+                          ;fairly instantaneous reading 
+
+        ; Convert to voltage
+        mov x+0, R0
+        mov x+1, R1
+        ; Pad other bits with zero
+        mov x+2, #0
+        mov x+3, #0
+        Load_y(20500) ; The MEASURED LED voltage: 2.074V, with 4 decimal places
+        lcall mul32
+        ; Retrive the ADC LED value
+        mov y+0, VLED_ADC+0
+        mov y+1, VLED_ADC+1
+        ; Pad other bits with zero
+        mov y+2, #0
+        mov y+3, #0
+        lcall div32 ; x stores thermocouple voltage
+
+        ;push x
+;
+        ;anl ADCCON0, #0xF0
+        ;orl ADCCON0, #0x01 ; Select channel 1
+        ;lcall Read_ADC
+;
+        ;mov x+0, R0
+        ;mov x+1, R1
+        ;; Pad other bits with zero
+        ;mov x+2, #0
+        ;mov x+3, #0
+        ;Load_y(20500) ; The MEASURED LED voltage: 2.074V, with 4 decimal places
+        ;lcall mul32
+        ;; Retrive the ADC LED value
+        ;mov y+0, VLED_ADC+0
+        ;mov y+1, VLED_ADC+1
+        ;; Pad other bits with zero
+        ;mov y+2, #0
+        ;mov y+3, #0
+        ;lcall div32
+;
+        ;load_y(100)
+        ;lcall mul32
+        ;
+        ;
+        ;load_y(273000)
+        ;lcall sub32
+;
+        ;mov y+0, x+0
+        ;mov y+1, x+1
+        ;mov y+2, x+2
+        ;mov y+3, x+3
+;
+        ;pop x
+        
+        Load_y(220000) ;adding 22, will change to ambient later
+        lcall add32
+
+        ret
+   
+; send_temp_to_LCD:
+;         push psw
+;         push acc
+
+;         Set_Cursor (1,8)
+;         Send_Constant_String(#measuredTempMes)
+
+;         ; display temperature info on LCD
+;         mov a, x+0
+;         lcall SendToLCD
+;         mov a, x+1
+;         lcall SendToLCD
+;         mov a, x+2
+;         lcall SendToLCD
+;         mov a, x+3
+;         lcall SendToLCD
+;         ; Set_Cursor (1,16) ; move cursor back
+        
+;         pop psw
+;         pop acc
+;         ret 
+
+;---------------------------------;
+; Send a BCD number to PuTTY      ;
+;---------------------------------;
+Send_BCD mac
+	push    ar0
+	mov     r0, %0
+	lcall   ?Send_BCD
+	pop     ar0
+	endmac
+	?Send_BCD:
+                push    acc
+                ; Write most significant digit
+                mov     a, r0
+                swap    a
+                anl     a, #0fh
+                orl     a, #30h
+                lcall   putchar
+                ; write least significant digit
+                mov     a, r0
+                anl     a, #0fh
+                orl     a, #30h
+                lcall   putchar
+                pop     acc
+ret
+
+; oven_FSM_LCD_DISPLAY (message)
+; Params
+;       message - constant string dataByte
+oven_FSM_LCD_DISPLAY MAC
+        ; Display mode and temperature on line 1
+        Set_Cursor(1,1)
+        Send_Constant_String(%0)
+        Send_Constant_String(#LCD_clearLine)
+
+        ; display seconds on line 2
+        Set_Cursor(2, 1)
+        mov     a, seconds_elapsed
+ENDMAC
+
+
+send_temp_to_serial:
+        ; mov x+3, #20
+        ; mov x+2, #60
+        ; mov x+1, #0
+        ; mov x+0, #0
+        
+        ; converting to BCD, sending to serial, then reverting back
+        push x
+        lcall hex2bcd
+        Send_BCD (bcd+3)
+        Send_BCD (bcd+2)
+        Send_BCD (bcd+1)
+        Send_BCD (bcd+0)
+        pop x
+
+        ; mov a, x+3
+        ; lcall SendToSerialPort
+        ; mov a, x+2
+        ; lcall SendToSerialPort
+        ; mov a, x+1
+        ; lcall SendToSerialPort
+        ; mov a, x+0
+        ; lcall SendToSerialPort
+        ret 

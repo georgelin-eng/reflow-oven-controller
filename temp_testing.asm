@@ -290,7 +290,7 @@ anl ADCCON0, #0xF0
 orl ADCCON0, #0x07 ; Select channel 7
 lcall Read_ADC
    
-    ; Convert to voltage
+; Convert to voltage
 mov x+0, R0
 mov x+1, R1
 ; Pad other bits with zero
@@ -308,11 +308,11 @@ lcall div32
 
 
 
-;Load_y(803);multiplying V pin by 80.3153
-;lcall mul32
+Load_y(803);multiplying V pin by 80.3153
+lcall mul32
 
-;Load_y(220000) ;adding 22, will change to ambient later
-;lcall add32
+Load_y(220000) ;adding 22, will change to ambient later
+lcall add32
 
 ;use put char to put individual characters
 ; Convert to BCD and display
@@ -321,9 +321,9 @@ lcall hex2bcd
 lcall Display_formated_BCD
 lcall Send_formated_BCD_nocrnl
 
-;Load_y(27305)
-;lcall sub32
-;lcall hex2bcd
+Load_y(27305)
+lcall sub32
+lcall hex2bcd
 
 
 anl ADCCON0, #0xF0
@@ -351,15 +351,15 @@ lcall Send_formated_BCD
 
 
 
-;mov R2, #250
-;lcall waitms
-;mov R2, #250
-;lcall waitms
+mov R2, #250
+lcall waitms
+mov R2, #250
+lcall waitms
    
 
 ; Wait 500 ms between conversions
-;mov R2, #250
-;lcall waitms
+mov R2, #250
+lcall waitms
 mov R2, #50
 lcall waitms
 
