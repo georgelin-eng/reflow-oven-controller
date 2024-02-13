@@ -433,6 +433,119 @@ mul32:
 	
 	ret
 
+	; x = x * y
+;------------------------------------------------
+mul32z:
+
+	push acc
+	push b
+	push psw
+	push AR0
+	push AR1
+	push AR2
+	push AR3
+		
+	; R0 = z+0 * y+0
+	; R1 = z+1 * y+0 + z+0 * y+1
+	; R2 = z+2 * y+0 + z+1 * y+1 + z+0 * y+2
+	; R3 = z+3 * y+0 + z+2 * y+1 + z+1 * y+2 + z+0 * y+3
+	
+	; Byte 0
+	mov	a,z+0
+	mov	b,y+0
+	mul	ab		; z+0 * y+0
+	mov	R0,a
+	mov	R1,b
+	
+	; Byte 1
+	mov	a,z+1
+	mov	b,y+0
+	mul	ab		; z+1 * y+0
+	add	a,R1
+	mov	R1,a
+	clr	a
+	addc a,b
+	mov	R2,a
+	
+	mov	a,z+0
+	mov	b,y+1
+	mul	ab		; z+0 * y+1
+	add	a,R1
+	mov	R1,a
+	mov	a,b
+	addc a,R2
+	mov	R2,a
+	clr	a
+	rlc	a
+	mov	R3,a
+	
+	; Byte 2
+	mov	a,z+2
+	mov	b,y+0
+	mul	ab		; z+2 * y+0
+	add	a,R2
+	mov	R2,a
+	mov	a,b
+	addc a,R3
+	mov	R3,a
+	
+	mov	a,z+1
+	mov	b,y+1
+	mul	ab		; z+1 * y+1
+	add	a,R2
+	mov	R2,a
+	mov	a,b
+	addc a,R3
+	mov	R3,a
+	
+	mov	a,z+0
+	mov	b,y+2
+	mul	ab		; z+0 * y+2
+	add	a,R2
+	mov	R2,a
+	mov	a,b
+	addc a,R3
+	mov	R3,a
+	
+	; Byte 3
+	mov	a,z+3
+	mov	b,y+0
+	mul	ab		; z+3 * y+0
+	add	a,R3
+	mov	R3,a
+	
+	mov	a,z+2
+	mov	b,y+1
+	mul	ab		; z+2 * y+1
+	add	a,R3
+	mov	R3,a
+	
+	mov	a,z+1
+	mov	b,y+2
+	mul	ab		; z+1 * y+2
+	add	a,R3
+	mov	R3,a
+	
+	mov	a,z+0
+	mov	b,y+3
+	mul	ab		; z+0 * y+3
+	add	a,R3
+	mov	R3,a
+	
+	mov	z+3,R3
+	mov	z+2,R2
+	mov	z+1,R1
+	mov	z+0,R0
+
+	pop AR3
+	pop AR2
+	pop AR1
+	pop AR0
+	pop psw
+	pop b
+	pop acc
+	
+	ret
 ;------------------------------------------------
 ; x = x / y
 ; This subroutine uses the 'paper-and-pencil' 
@@ -543,6 +656,13 @@ Load_y MAC
 	mov y+1, #high(%0 % 0x10000) 
 	mov y+2, #low (%0 / 0x10000) 
 	mov y+3, #high(%0 / 0x10000) 
+ENDMAC
+
+Load_z MAC
+	mov z+0, #low (%0 % 0x10000) 
+	mov z+1, #high(%0 % 0x10000) 
+	mov z+2, #low (%0 / 0x10000) 
+	mov z+3, #high(%0 / 0x10000) 
 ENDMAC
 	
 $LIST
