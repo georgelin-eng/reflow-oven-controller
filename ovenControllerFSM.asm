@@ -404,19 +404,23 @@ Timer2_ISR:
         push    acc
         push    psw
 
-        inc     Count1ms_PWM
+        inc     Count1ms_PWM   ; variable used to count every 10ms used for the PWM
 
         ; Increment the 16-bit one mili second counter
         inc     Count1ms+0    ; Increment the low 8-bits first
         mov     a, Count1ms+0 ; If the low 8-bits overflow, then increment high 8-bits
         jnz     Inc_done
-        inc     Count1ms+1
+        inc     Count1ms+1    
  
         
         Inc_done:
-        mov    a, Count1ms_PWM
-        cjne   a, #10, check1secondsPassed 
-
+        ; If not in oven, skip PWM
+        jnb    IN_OVEN_FLAG, skipPWM
+        mov    a, Count1ms_PWM ; 
+        ; This check is done so that this subroutine executes every 10ms 
+        cjne    a, #10, check10msPassed 
+                mov Count1ms_PWM, #0
+                ;GL PWM code that Jesus gave
                 ;RK working on PWM
                 inc     pwm_counter
                 clr     c
@@ -425,14 +429,15 @@ Timer2_ISR:
                 cpl     c
                 mov     PWM_OUT, c 
                 mov     a, pwm_counter
-                cjne    a, #100, Timer2_ISR_done
+                ; cjne    a, #100, Timer2_ISR_done ; why does this go to Timer2_ISR_done? - GL
+                cjne    a, #100, check10msPassed ; changed label from `Timer2_ISR_done` to `check10msPassed`
                 mov     pwm_counter, #0
 
                 clr     a
-                mov     Count1ms_PWM, a
+                mov     Count1ms_PWM, a ; reset the 1ms for PWM counter
         
-        
-        check1secondsPassed:
+        check10msPassed:
+        skipPWM:
         ; Check if one second has passed
 	mov	a, Count1ms+0
 	cjne    a, #low(1000), Timer2_ISR_done ; Warning: this instruction changes the carry flag!
@@ -442,9 +447,17 @@ Timer2_ISR:
         ; ---  1s has passed ----
 
         lcall DO_TEMP_READ
-        ; lcall send_temp_to_serial
+        lcall hex2bcd ; puts value of x into BCD varaibles
+        lcall send_temp_to_serial
         
         ; ---- Log File -----
+        mov a,  PWM
+        lcall   SendToSerialPort
+        mov a,  #'\r' ; Return character
+        lcall   putchar
+        mov a,  #'\n' ; New-line character
+        lcall   putchar
+
         ; mov a,  seconds_elapsed
         ; lcall   SendToSerialPort
         ; mov a,  #'\r' ; Return character
@@ -464,23 +477,23 @@ Timer2_ISR:
         ; add A, #1
         ; mov OVEN_STATE, a
 
-        mov DPTR, #soakTempLog
-        lcall SendString
-        mov a, temp_soak
-        lcall SendToSerialPort
-        mov a,  #'\r' ; Return character
-        lcall   putchar
-        mov a,  #'\n' ; New-line character
-        lcall   putchar
+        ; mov DPTR, #soakTempLog
+        ; lcall SendString
+        ; mov a, temp_soak
+        ; lcall SendToSerialPort
+        ; mov a,  #'\r' ; Return character
+        ; lcall   putchar
+        ; mov a,  #'\n' ; New-line character
+        ; lcall   putchar
 
-        mov DPTR, #reflowTempLog
-        lcall SendString
-        mov a, temp_refl
-        lcall SendToSerialPort
-        mov a,  #'\r' ; Return character
-        lcall   putchar
-        mov a,  #'\n' ; New-line character
-        lcall   putchar
+        ; mov DPTR, #reflowTempLog
+        ; lcall SendString
+        ; mov a, temp_refl
+        ; lcall SendToSerialPort
+        ; mov a,  #'\r' ; Return character
+        ; lcall   putchar
+        ; mov a,  #'\n' ; New-line character
+        ; lcall   putchar
 
         jnb     REFLOW_FLAG,  not_in_reflow ;Checks if we are in reflow state
         mov     a, exit_seconds             ;Increments the early exit seconds counter
@@ -711,10 +724,12 @@ oven_FSM_LCD_DISPLAY MAC
         mov     a, seconds_elapsed
 ENDMAC
 
-
+; Sends the BCD value
 send_temp_to_serial:
         Send_BCD (bcd+3)
         Send_BCD (bcd+2)
+        mov a, #'.'
+        lcall putchar
         Send_BCD (bcd+1)
         Send_BCD (bcd+0)
 
@@ -791,6 +806,7 @@ INIT_ALL:
         ; Oven configuration
         mov     OVEN_STATE, #OVEN_STATE_PREHEAT
         mov     seconds_elapsed, #0
+        mov     PWM, #0
         mov     Count1ms_PWM, #0
         mov     exit_seconds, #0
         mov     total_seconds, #0
@@ -802,6 +818,7 @@ INIT_ALL:
         mov x+1, #0
         mov x+2, #0
         mov x+3, #0
+
         
         ret
 
@@ -859,7 +876,7 @@ OVEN_FSM:
                 ovenFSM_soak_jmp:
                         ljmp    ovenFSM_soak
                 oven_state_preheat_tasks:
-                        mov     pwm, #30
+                        mov     pwm, #100
                         Set_Cursor(1, 1)
                         Send_Constant_String(#preheatMessage)
                         Send_Constant_String(#LCD_clearLine)
@@ -1046,7 +1063,7 @@ OVEN_FSM:
                 
         ovenFSM_reflow:
                 cjne    a, #OVEN_STATE_REFLOW, ovenFSM_cooling
-                mov     pwm, #100
+                mov     pwm, #20
                 Set_Cursor(1, 1)
                 Send_Constant_String(#reflowMessage)
                 Send_Constant_String(#LCD_clearLine)
@@ -1240,6 +1257,8 @@ main_program:
                 Send_Constant_String(#LCD_defaultTop)
                 Set_Cursor(2, 1)
                 Send_Constant_String(#LCD_defaultBot)
+                
+                mov  PWM, #0 ; sets PWM to zero
 
         checkStartButton: ; assumed negative logic - used a label for an easy ljmp in the future
                 check_Push_Button(PB_START_PIN, noStartButtonPress)
