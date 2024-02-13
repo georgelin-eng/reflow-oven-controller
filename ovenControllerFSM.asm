@@ -824,6 +824,7 @@ INIT_ALL:
 
 STOP_PROCESS:
         ; Turn everything off
+        clr     PWM_OUT
         clr     REFLOW_FLAG
         clr     IN_OVEN_FLAG
         clr     IN_MENU_FLAG
@@ -833,6 +834,7 @@ STOP_PROCESS:
         mov     exit_seconds, #0
         mov     total_seconds, #0
         MOV     pwm, #0
+        MOV     pwm_counter, #0
         mov x+0, #0
         mov x+1, #0
         mov x+2, #0
@@ -1247,6 +1249,7 @@ main_program:
         mov     sp, #0x7f
         lcall   INIT_ALL
         lcall   LCD_4BIT
+        clr     PWM_OUT
         ; lcall   configure_LCD_multiplexing
 
         ; Default display - 
@@ -1259,6 +1262,7 @@ main_program:
                 Send_Constant_String(#LCD_defaultBot)
                 
                 mov  PWM, #0 ; sets PWM to zero
+                clr  PWM_OUT
 
         checkStartButton: ; assumed negative logic - used a label for an easy ljmp in the future
                 check_Push_Button(PB_START_PIN, noStartButtonPress)
