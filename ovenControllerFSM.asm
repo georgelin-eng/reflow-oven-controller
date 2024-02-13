@@ -966,7 +966,7 @@ OVEN_FSM:
         
         ovenFSM_soak:
                 cjne    a, #OVEN_STATE_SOAK, ovenFSM_Ramp2Peak
-                mov     pwm, #20
+                mov     pwm, #1
                 Set_Cursor (1, 1)
                 Send_Constant_String(#soakMessage)
                 Send_Constant_String(#LCD_clearLine)
@@ -1065,7 +1065,7 @@ OVEN_FSM:
                 
         ovenFSM_reflow:
                 cjne    a, #OVEN_STATE_REFLOW, ovenFSM_cooling
-                mov     pwm, #20
+                mov     pwm, #5
                 Set_Cursor(1, 1)
                 Send_Constant_String(#reflowMessage)
                 Send_Constant_String(#LCD_clearLine)
