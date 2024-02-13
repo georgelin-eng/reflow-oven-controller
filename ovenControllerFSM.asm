@@ -292,6 +292,11 @@ soak:
 reflow:
     DB  'y val from reflow temp: ',0
 
+soakTempLog:
+    DB 'Soak Temp: ', 0
+
+reflowTempLog:
+    DB 'Reflow Temp: ', 0
 
 ; Messages to display on LCD when in Oven Controller FSM
 
@@ -440,12 +445,12 @@ Timer2_ISR:
         ; lcall send_temp_to_serial
         
         ; ---- Log File -----
-        mov a,  seconds_elapsed
-        lcall   SendToSerialPort
-        mov a,  #'\r' ; Return character
-        lcall   putchar
-        mov a,  #'\n' ; New-line character
-        lcall   putchar
+        ; mov a,  seconds_elapsed
+        ; lcall   SendToSerialPort
+        ; mov a,  #'\r' ; Return character
+        ; lcall   putchar
+        ; mov a,  #'\n' ; New-line character
+        ; lcall   putchar
 
         ; mov a,  OVEN_STATE
         ; lcall   SendToSerialPort
@@ -458,6 +463,25 @@ Timer2_ISR:
         ; mov a, OVEN_STATE
         ; add A, #1
         ; mov OVEN_STATE, a
+
+        mov DPTR, #soakTempLog
+        lcall SendString
+        mov a, temp_soak
+        lcall SendToSerialPort
+        mov a,  #'\r' ; Return character
+        lcall   putchar
+        mov a,  #'\n' ; New-line character
+        lcall   putchar
+
+        mov DPTR, #reflowTempLog
+        lcall SendString
+        mov a, temp_refl
+        lcall SendToSerialPort
+        mov a,  #'\r' ; Return character
+        lcall   putchar
+        mov a,  #'\n' ; New-line character
+        lcall   putchar
+
         jnb     REFLOW_FLAG,  not_in_reflow ;Checks if we are in reflow state
         mov     a, exit_seconds             ;Increments the early exit seconds counter
         add     a, #1
@@ -897,22 +921,22 @@ OVEN_FSM:
 
                 ; logging the value of y on serial,
                 ; group every 3 digits, convert the decimal to binary, and convert the full binary to decimal to find value in y
-                mov DPTR, #soak
-                lcall SendString
+                ; mov DPTR, #soak
+                ; lcall SendString
 
-                mov a, y+3
-                lcall SendToSerialPort
-                mov a, y+2
-                lcall SendToSerialPort
-                mov a, y+1
-                lcall SendToSerialPort
-                mov a, y+0
-                lcall SendToSerialPort
+                ; mov a, y+3
+                ; lcall SendToSerialPort
+                ; mov a, y+2
+                ; lcall SendToSerialPort
+                ; mov a, y+1
+                ; lcall SendToSerialPort
+                ; mov a, y+0
+                ; lcall SendToSerialPort
 
-                mov a,  #'\r' ; Return character
-                lcall   putchar
-                mov a,  #'\n' ; New-line character
-                lcall   putchar
+                ; mov a,  #'\r' ; Return character
+                ; lcall   putchar
+                ; mov a,  #'\n' ; New-line character
+                ; lcall   putchar
 
                 lcall x_gt_y
                 jnb mf, noChange_preHeat ; jump past the jnb and mov instructions which are both 3 bytes
@@ -997,22 +1021,22 @@ OVEN_FSM:
 
 
                 ; logging the value of y on serial
-                mov DPTR, #reflow
-                lcall SendString 
+                ; mov DPTR, #reflow
+                ; lcall SendString 
 
-                mov a, y+3
-                lcall SendToSerialPort
-                mov a, y+2
-                lcall SendToSerialPort
-                mov a, y+1
-                lcall SendToSerialPort
-                mov a, y+0
-                lcall SendToSerialPort
+                ; mov a, y+3
+                ; lcall SendToSerialPort
+                ; mov a, y+2
+                ; lcall SendToSerialPort
+                ; mov a, y+1
+                ; lcall SendToSerialPort
+                ; mov a, y+0
+                ; lcall SendToSerialPort
 
-                mov a,  #'\r' ; Return character
-                lcall   putchar
-                mov a,  #'\n' ; New-line character
-                lcall   putchar
+                ; mov a,  #'\r' ; Return character
+                ; lcall   putchar
+                ; mov a,  #'\n' ; New-line character
+                ; lcall   putchar
 
                 lcall x_gt_y
                 jnb mf, $+3+3+3 ; jump past the jnb and mov instructions which are both 3 bytes
@@ -1137,12 +1161,12 @@ MENU_FSM:
                         mov a, #MIN_TIME
                         mov time_refl, a
 
-
+        ; check whether we're in the soak or 
         checkTempInc:
                 check_Push_Button(PB_INC_TEMP_PIN, enterMenuStateCheck)
                 cjne a, #MENU_STATE_SOAK, incTempReflow
                         mov     a, temp_soak 
-                        add     A, #5        
+                        add     a, #5        
                         mov     temp_soak, a 
 
                         cjne a, #(MAX_TEMP+5), enterMenuStateCheck
@@ -1152,7 +1176,7 @@ MENU_FSM:
                         sjmp enterMenuStateCheck       
                 incTempReflow:
                         mov     a, temp_refl
-                        add     A, #5
+                        add     a, #5
                         mov     temp_refl, a
 
                         cjne a, #(MAX_TEMP+5), enterMenuStateCheck
