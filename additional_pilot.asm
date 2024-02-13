@@ -1,30 +1,7 @@
-; Main file. FSM implementing the following sequence:
-;       State 0: Power = 0% (default state)
-;               if start = NO, self loop; if start = YES, next state
-;       State 1: Power = 100%; Sec = 0
-;               if temp <= 150, self loop; temp > 150, next
-;       State 2: Power = 20%
-;               if sec <= 60s, self loop; sec>60s, next
-;       State 3: Power = 100%; Sec = 0
-;               if temp <= 220, self loop; temp>220, next
-;       State 4: Power = 20%
-;               if sec <= 45s, self loop; sec >45, next
-;       State 5: Power = 0%
-;               if temp >=60, self loop; temp <60, next
-;       return to state 0
+; code/algorithm planning for additional functionalities 
+; contains fsm code updated as of 1:21 PM on 02 13 2024
+; allows team to pilot additional functionalities without modifying the original code
 
-
-; MACROS ;
-CLJNE mac  
-    cjne %0, %1, $+3+2 ; Jump if no equal 2 bytes ahead since sjmp is a 2 byte instruction  
-    sjmp $+2+3 ; Jump 3 bytes after this instruction as ljmp takes 3 bytes to encode
-    ljmp %2 ; ljmp can access any part of the code space
-endmac
-
-; check_Push_Button(variable_flag, dest_label)
-; Params
-; variable_flag - variable we are checking in place of the pin e.g. PB_START_PIN
-; dest_label - where to jump if a push button is not pressed
 check_Push_Button MAC ; new one with multiplexed buttons
         setb PB_START_PIN
         setb PB_CHANGE_MENU_PIN
@@ -125,20 +102,6 @@ $LIST
 ;                               -------
 
 
-
-;-------------------------------------------------------------------------------------------------------------------------------------
-
-;                                                              STYLE GUIDE
-
-; End flag names with _FLAG
-; Use all upper case for constants (anything defined in equ or pin definitions), as it makes it easier to read quickly
-; Before any jump or logic block comment purpose and try to comment throughout - code should be self explanatory, comment "why" it was implemented this way
-; Before any block of code also comment who wrote it 
-; Aim for variable names with 8-20 characters
-
-; --------------------------------------------------------------------------------------------------------------------------
-
-
 ; Timer constants
 CLK                   EQU 16600000 ; Microcontroller system frequency in Hz
 BAUD                  EQU 115200   ; Baud rate of UART in bps 
@@ -157,6 +120,7 @@ STOP_PIN              EQU P0.0
 SHARED_PIN            EQU P1.5 
 
 PWM_OUT               EQU P1.2 ; Pin 13
+
 
 ; FSM uses integer state encodings
 ; Menu states
@@ -236,6 +200,10 @@ LCD_D5          EQU P0.1
 LCD_D6          EQU P0.2
 LCD_D7          EQU P0.3
 
+;** **
+SOUND_OUT       EQU PX.X ; replace with available pin
+
+
 $NOLIST
 $include(LCD_4bit.inc) ; A library of LCD related functions and utility macros
 $LIST
@@ -247,7 +215,8 @@ IN_MENU_FLAG        : dbit 1
 IN_OVEN_FLAG        : dbit 1
 REFLOW_FLAG         : dbit 1
 ENABLE_SEC_INC_FLAG : dbit 1 ; used to control whether seconds incrementing is enabled 
-TIME_TO_BEEP_FLAG   : dbit 1
+;** **
+SOUND_FLAG          : dbit 1 
 
 ; Variables used for push button mux
 PB_START_PIN        : dbit 1
@@ -272,7 +241,7 @@ LCD_clearLine   : db '                ', 0 ; put at end to clear line
 
 preheatMessage  : db 'Preheat', 0
 soakMessage     : db 'Soak', 0
-ramp2peakMessage: db 'Ramp to Peak', 0
+ramp2peakMessage: db 'Peak to Soak', 0
 reflowMessage   : db 'Reflow', 0
 coolingMessage  : db 'Cooling', 0
 FinishedMessage : db 'Finished!', 0
@@ -399,7 +368,7 @@ Timer0_ISR:
 ;---------------------------------;
 Timer2_ISR:
         clr     TF2  ; Timer 2 doesn't clear TF2 automatically. Do it in the ISR.  It is bit addressable.
-        ; cpl     P0.4 ; To check the interrupt rate with oscilloscope. It must be precisely a 1 ms pulse.
+        cpl     P0.4 ; To check the interrupt rate with oscilloscope. It must be precisely a 1 ms pulse.
 
         ; The two registers used in the ISR must be saved in the stack
         push    acc
@@ -451,50 +420,6 @@ Timer2_ISR:
         lcall hex2bcd ; puts value of x into BCD varaibles
         lcall send_temp_to_serial
         
-        ; ---- Log File -----
-        ; mov a,  PWM
-        ; lcall   SendToSerialPort
-        ; mov a,  #'\r' ; Return character
-        ; lcall   putchar
-        ; mov a,  #'\n' ; New-line character
-        ; lcall   putchar
-
-        ; mov a,  seconds_elapsed
-        ; lcall   SendToSerialPort
-        ; mov a,  #'\r' ; Return character
-        ; lcall   putchar
-        ; mov a,  #'\n' ; New-line character
-        ; lcall   putchar
-
-        ; mov a,  OVEN_STATE
-        ; lcall   SendToSerialPort
-        ; mov a,  #'\r' ; Return character
-        ; lcall   putchar
-        ; mov a,  #'\n' ; New-line character
-        ; lcall   putchar
-        
-
-        ; mov a, OVEN_STATE
-        ; add A, #1
-        ; mov OVEN_STATE, a
-
-        ; mov DPTR, #soakTempLog
-        ; lcall SendString
-        ; mov a, temp_soak
-        ; lcall SendToSerialPort
-        ; mov a,  #'\r' ; Return character
-        ; lcall   putchar
-        ; mov a,  #'\n' ; New-line character
-        ; lcall   putchar
-
-        ; mov DPTR, #reflowTempLog
-        ; lcall SendString
-        ; mov a, temp_refl
-        ; lcall SendToSerialPort
-        ; mov a,  #'\r' ; Return character
-        ; lcall   putchar
-        ; mov a,  #'\n' ; New-line character
-        ; lcall   putchar
 
         jnb     REFLOW_FLAG,  not_in_reflow ;Checks if we are in reflow state
         mov     a, exit_seconds             ;Increments the early exit seconds counter
@@ -641,45 +566,6 @@ DO_TEMP_READ:
 
         Load_y(81)
         lcall mul32
-
-        ; code to use temp sensor for amb temp
-        ;push x
-;
-        ;anl ADCCON0, #0xF0
-        ;orl ADCCON0, #0x01 ; Select channel 1
-        ;lcall Read_ADC
-;
-        ;mov x+0, R0
-        ;mov x+1, R1
-        ;; Pad other bits with zero
-        ;mov x+2, #0
-        ;mov x+3, #0
-        ;Load_y(20500) ; The MEASURED LED voltage: 2.074V, with 4 decimal places
-        ;lcall mul32
-        ;; Retrive the ADC LED value
-        ;mov y+0, VLED_ADC+0
-        ;mov y+1, VLED_ADC+1
-        ;; Pad other bits with zero
-        ;mov y+2, #0
-        ;mov y+3, #0
-        ;lcall div32
-;
-        ;load_y(100)
-        ;lcall mul32
-        ;
-        ;
-        ;load_y(273000)
-        ;lcall sub32
-;
-        ;mov y+0, x+0
-        ;mov y+1, x+1
-        ;mov y+2, x+2
-        ;mov y+3, x+3
-;
-        ;lcall hex2bcd
-        ;lcall send_temp_to_serial
-;
-        ;pop x
         
         Load_y(220000) ;adding 22, will change to ambient later
         lcall add32
@@ -727,23 +613,12 @@ ENDMAC
 
 ; Sends the BCD value
 send_temp_to_serial:
-        ; Sends temperature
         Send_BCD (bcd+3)
         Send_BCD (bcd+2)
         mov a, #'.'
         lcall putchar
         Send_BCD (bcd+1)
         Send_BCD (bcd+0)
-
-        ; Sends soak time, soak temp, reflow time, reflow temp
-        mov a, time_soak
-        lcall SendToSerialPort 
-        mov a, temp_soak
-        lcall SendToSerialPort 
-        mov a, time_refl
-        lcall SendToSerialPort 
-        mov a, temp_refl
-        lcall SendToSerialPort 
 
         mov a,  #'\r' ; Return character
         lcall   putchar
@@ -824,7 +699,6 @@ INIT_ALL:
         mov     total_seconds, #0
         clr     REFLOW_FLAG
         clr     ENABLE_SEC_INC_FLAG ; flag is set to zero so that seconds won't increment
-        clr     TIME_TO_BEEP_FLAG   ; flag is one when we switch states (i.e will beep)
 
         ; clear x
         mov x+0, #0
@@ -837,7 +711,6 @@ INIT_ALL:
 
 STOP_PROCESS:
         ; Turn everything off
-        setb TIME_TO_BEEP_FLAG
         clr     PWM_OUT
         clr     REFLOW_FLAG
         clr     IN_OVEN_FLAG
@@ -876,7 +749,6 @@ STOP_PROCESS:
 ;       if OVEN_STATE != state,  jmp
 ;       display on time and temp LCD
 OVEN_FSM:
-        clr TIME_TO_BEEP_FLAG
         Wait_Milli_Seconds(#50)                                 
         
         check_Push_Button (PB_STOP_PIN, enterOvenStateCheck)    
@@ -887,6 +759,8 @@ OVEN_FSM:
                 mov  a, OVEN_STATE
         
         ovenFSM_preheat:
+                ;** setb SOUND_FLAG **
+
                 ; long jump for relative offset
                 cjne    a, #OVEN_STATE_PREHEAT, ovenFSM_soak_jmp
                 sjmp    oven_state_preheat_tasks
@@ -920,27 +794,7 @@ OVEN_FSM:
                 ljmp    STOP_PROCESS ; more then 60 seconds has elapsed and we are below 50C ESCAPE
                 
         Skip_Emergency_exit:       
-                ; State transition check ; if x > temp_soak, next state ; else, self loop
-                ; load_y(80*10000) ; Commented out for now since this is a constant value instead of a variable
-                ;mov temp_soak, #80 ; using the value of 80
-                ;load_y (temp_soak*10000) 
-
-                ;mov temp_soak, #80
-                ;mov y+0, temp_soak
-                ;mov y+1, #0
-                ;mov y+2, #0
-                ;mov y+3, #0
-                ;push x
-                ;load_x(10000)
-                ;;load_y(temp_refl) 
-                ;lcall mul32
-                ;mov y+0, x+0
-                ;mov y+1, x+1
-                ;mov y+2, x+2
-                ;mov y+3, x+3
-                ;pop x
-
-                ;mov temp_soak, #80
+                
                 mov y+0, temp_soak
                 mov y+1, #0
                 mov y+2, #0
@@ -952,31 +806,10 @@ OVEN_FSM:
                 mov y+2, z+2
                 mov y+3, z+3                        
 
-
-                ; logging the value of y on serial,
-                ; group every 3 digits, convert the decimal to binary, and convert the full binary to decimal to find value in y
-                ; mov DPTR, #soak
-                ; lcall SendString
-
-                ; mov a, y+3
-                ; lcall SendToSerialPort
-                ; mov a, y+2
-                ; lcall SendToSerialPort
-                ; mov a, y+1
-                ; lcall SendToSerialPort
-                ; mov a, y+0
-                ; lcall SendToSerialPort
-
-                ; mov a,  #'\r' ; Return character
-                ; lcall   putchar
-                ; mov a,  #'\n' ; New-line character
-                ; lcall   putchar
-
                 lcall x_gt_y
                 jnb mf, noChange_preHeat ; jump past the jnb and mov instructions which are both 3 bytes
                 mov OVEN_STATE, #OVEN_STATE_SOAK
                 mov seconds_elapsed, #0
-                setb TIME_TO_BEEP_FLAG
         noChange_preHeat:
                 ljmp oven_FSM_done
         
@@ -1001,7 +834,6 @@ OVEN_FSM:
                 cjne    a, time_soak, noChange_soakState
                 mov     OVEN_STATE, #OVEN_STATE_RAMP2PEAK
                 mov     seconds_elapsed, #0 ; reset
-                setb TIME_TO_BEEP_FLAG
                 noChange_soakState:
                         ljmp    oven_FSM_done
         
@@ -1078,7 +910,6 @@ OVEN_FSM:
                 jnb mf, $+3+3+3 ; jump past the jnb and mov instructions which are both 3 bytes
                 mov OVEN_STATE, #OVEN_STATE_REFLOW
                 mov  seconds_elapsed, #0
-                setb TIME_TO_BEEP_FLAG
                 ljmp oven_FSM_done
                 
         ovenFSM_reflow:
@@ -1102,7 +933,6 @@ OVEN_FSM:
                 cjne    a, time_refl, noChange_reflowState
                 mov     OVEN_STATE, #OVEN_STATE_COOLING
                 mov     seconds_elapsed, #0 ; reset
-                setb TIME_TO_BEEP_FLAG
                 noChange_reflowState:
                         ljmp    oven_FSM_done
 
@@ -1129,7 +959,6 @@ OVEN_FSM:
                 jnb mf, $+3+3+3 ; jump past the jnb and mov instructions which are both 3 bytes
                 mov OVEN_STATE, #OVEN_STATE_FINISHED
                 mov     seconds_elapsed, #0 ; reset
-                setb    TIME_TO_BEEP_FLAG
                 ljmp oven_FSM_done
 
         ovenFSM_finished:
@@ -1158,6 +987,8 @@ OVEN_FSM:
         ovenFSM_exit:
                 mov     OVEN_STATE, #OVEN_STATE_PREHEAT
                 ; ljmp oven_FSM_done
+                ; **additional feature**
+                ; 
                 lcall   STOP_PROCESS ; Exit oven FSM, turn power off, return to program entry
                 
         oven_FSM_done:
@@ -1172,7 +1003,6 @@ MENU_FSM:
         check_Push_Button (PB_CHANGE_MENU_PIN, checkTimeInc) ; increments menu state
         inc     a
         mov     MENU_STATE, a 
-        clr     TIME_TO_BEEP_FLAG
         setb    CHANGE_MENU_PIN
         
 
@@ -1288,7 +1118,6 @@ main_program:
         checkStartButton: ; assumed negative logic - used a label for an easy ljmp in the future
                 check_Push_Button(PB_START_PIN, noStartButtonPress)
                 setb    ENABLE_SEC_INC_FLAG 
-                setb    TIME_TO_BEEP_FLAG
                 ; Send 0 to the serial
                 mov BCD+0, #0x0
                 mov BCD+1, #0x0
@@ -1296,11 +1125,6 @@ main_program:
                 mov BCD+3, #0x0
                 mov BCD+4, #0x0
                 lcall send_temp_to_serial
-                mov a,  #'\r' ; Return character
-                lcall   putchar
-                mov a,  #'\n' ; New-line character
-                lcall   putchar
-
                 ljmp    enter_oven_fsm ; successful button press, enter oven FSM   
 
         noStartButtonPress:

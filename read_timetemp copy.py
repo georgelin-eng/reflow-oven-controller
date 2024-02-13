@@ -32,16 +32,23 @@ ser = serial.Serial(
 ser.isOpen()    
    
 def data_gen():
-    global line
+    #global line
+    global soaktime, soaktemp, refltime, refltemp
     t = data_gen.t
     while 1:
         strin = ser.readline()# Get data from serial port
         strin = strin.rstrip() # Remove trailing characters from the string
         strin = strin.decode() # Change string encoding to utf-8 (compatible with ASCII)
         
-   
+
+
         try:
-            temperature = float(strin) # store only temp vals since we will sync time with the serial monitor o
+            #temperature = float(strin) # store only temp vals since we will sync time with the serial monitor o
+            temperature = strin[0:9]
+            soaktime = strin[9:12]
+            soaktemp = strin[12:15]
+            refltime = strin[15:18]
+            refltemp = strin[18:21]
             
         except:
             print("***ERROR: Unable to receive string***") # Something wrong with the received string
