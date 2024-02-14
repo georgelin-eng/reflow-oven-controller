@@ -1185,8 +1185,7 @@ OVEN_FSM:
                 load_z(100000)
                 lcall sub32z    ; y = y - 10
 
-
-                lcall x_gt_y   ; if x > y-30, set PWM
+                lcall x_gt_y   ; if x > y-10, set PWM
                 jnb mf, $+3+3
                 mov PWM, #5 ; turn PWM off - commented out
 
