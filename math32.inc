@@ -231,6 +231,46 @@ sub32:
 	pop psw
 	pop acc
 	ret
+; y = y - z from x = x - y ; x -> y, y -> z
+sub32z:
+	push acc
+	push psw
+	clr c
+	mov a, y+0
+	subb a, z+0
+	mov y+0, a
+	mov a, y+1
+	subb a, z+1
+	mov y+1, a
+	mov a, y+2
+	subb a, z+2
+	mov y+2, a
+	mov a, y+3
+	subb a, z+3
+	mov y+3, a
+	pop psw
+	pop acc
+	ret
+; ; y = y - z
+; sub32z:
+; 	push acc
+; 	push psw
+; 	clr c
+; 	mov a, y+0
+; 	subb a, z+0
+; 	mov y+0, a
+; 	mov a, y+1
+; 	subb a, z+1
+; 	mov y+1, a
+; 	mov a, y+2
+; 	subb a, z+2
+; 	mov y+2, a
+; 	mov a, y+3
+; 	subb a, z+3
+; 	mov y+3, a
+; 	pop psw
+; 	pop acc
+; 	ret
 
 ;------------------------------------------------
 ; mf=1 if x < y

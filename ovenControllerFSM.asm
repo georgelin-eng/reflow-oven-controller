@@ -921,26 +921,12 @@ OVEN_FSM:
                 
         Skip_Emergency_exit:       
                 ; State transition check ; if x > temp_soak, next state ; else, self loop
-                ; load_y(80*10000) ; Commented out for now since this is a constant value instead of a variable
-                ;mov temp_soak, #80 ; using the value of 80
-                ;load_y (temp_soak*10000) 
 
-                ;mov temp_soak, #80
-                ;mov y+0, temp_soak
-                ;mov y+1, #0
-                ;mov y+2, #0
-                ;mov y+3, #0
-                ;push x
-                ;load_x(10000)
-                ;;load_y(temp_refl) 
-                ;lcall mul32
-                ;mov y+0, x+0
-                ;mov y+1, x+1
-                ;mov y+2, x+2
-                ;mov y+3, x+3
-                ;pop x
+                ; first check that temperature is valid
+                load_y(3000000) ; 300 degrees
+                lcall x_gt_y   
+                jb mf, noChange_preHeat ; x > 300 degrees, this is an invalid temperature 
 
-                ;mov temp_soak, #80
                 mov y+0, temp_soak
                 mov y+1, #0
                 mov y+2, #0
@@ -951,26 +937,6 @@ OVEN_FSM:
                 mov y+1, z+1
                 mov y+2, z+2
                 mov y+3, z+3                        
-
-
-                ; logging the value of y on serial,
-                ; group every 3 digits, convert the decimal to binary, and convert the full binary to decimal to find value in y
-                ; mov DPTR, #soak
-                ; lcall SendString
-
-                ; mov a, y+3
-                ; lcall SendToSerialPort
-                ; mov a, y+2
-                ; lcall SendToSerialPort
-                ; mov a, y+1
-                ; lcall SendToSerialPort
-                ; mov a, y+0
-                ; lcall SendToSerialPort
-
-                ; mov a,  #'\r' ; Return character
-                ; lcall   putchar
-                ; mov a,  #'\n' ; New-line character
-                ; lcall   putchar
 
                 lcall x_gt_y
                 jnb mf, noChange_preHeat ; jump past the jnb and mov instructions which are both 3 bytes
@@ -1001,7 +967,7 @@ OVEN_FSM:
                 cjne    a, time_soak, noChange_soakState
                 mov     OVEN_STATE, #OVEN_STATE_RAMP2PEAK
                 mov     seconds_elapsed, #0 ; reset
-                setb TIME_TO_BEEP_FLAG
+                setb    TIME_TO_BEEP_FLAG
                 noChange_soakState:
                         ljmp    oven_FSM_done
         
@@ -1026,24 +992,12 @@ OVEN_FSM:
                 lcall   Display_formated_BCD
 
                 ; check that temperature for reflow is reached, then exit 
-                ; temp_gt_threshold(temp_refl, #OVEN_STATE_REFLOW)
-                ; load_y(120 * 10000)
-                ;mov temp_refl, #100
-                ;mov y+0, temp_refl
-                ;mov y+1, #0
-                ;mov y+2, #0
-                ;mov y+3, #0
-                ;push x
-                ;load_x(10000)
-                ;;load_y(temp_refl) 
-                ;lcall mul32
-                ;mov y+0, x+0
-                ;mov y+1, x+1
-                ;mov y+2, x+2
-                ;mov y+3, x+3
-                ;pop x
+                load_y(3000000)  ; 300 degrees
+                lcall x_lt_y     ; check if x < 300
+                jb mf, validTemp ; x < 300 degrees, this is a invalid, skip state transition
+                ljmp oven_FSM_done
 
-                ;mov temp_refl, #110
+                validTemp:
                 mov y+0, temp_refl
                 mov y+1, #0
                 mov y+2, #0
@@ -1054,7 +1008,6 @@ OVEN_FSM:
                 mov y+1, z+1
                 mov y+2, z+2
                 mov y+3, z+3                        
-
 
                 ; logging the value of y on serial
                 ; mov DPTR, #reflow
@@ -1102,7 +1055,7 @@ OVEN_FSM:
                 cjne    a, time_refl, noChange_reflowState
                 mov     OVEN_STATE, #OVEN_STATE_COOLING
                 mov     seconds_elapsed, #0 ; reset
-                setb TIME_TO_BEEP_FLAG
+                setb    TIME_TO_BEEP_FLAG
                 noChange_reflowState:
                         ljmp    oven_FSM_done
 
