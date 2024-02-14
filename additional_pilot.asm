@@ -325,7 +325,7 @@ SendString:
 SendStringDone:
         ret
 
-; Eight bit number to display passed in ’a’.
+; Eight bit number to display passed in ï¿½aï¿½.
 SendToLCD:
         mov     b, #100
         div     ab
@@ -341,7 +341,7 @@ SendToLCD:
         lcall   ?WriteData; Send to LCD
         ret
 
-; Eight bit number to display passed in ’a’.
+; Eight bit number to display passed in ï¿½aï¿½.
 SendToSerialPort:
         mov     b, #100
         div     ab
@@ -478,12 +478,12 @@ Timer2_ISR:
         mov     Count1ms+1, a
         
         ; -------- Log File -------
-        mov a,  PWM
-        lcall   SendToSerialPort
-        mov a,  #'\r' ; Return character
-        lcall   putchar
-        mov a,  #'\n' ; New-line character
-        lcall   putchar
+        ;mov a,  PWM
+        ;lcall   SendToSerialPort
+        ;mov a,  #'\r' ; Return character
+        ;lcall   putchar
+        ;mov a,  #'\n' ; New-line character
+        ;lcall   putchar
 
         ; mov a,  seconds_elapsed
         ; lcall   SendToSerialPort
@@ -702,7 +702,7 @@ DO_TEMP_READ:
         ret
 
 ;---------------------------------;
-; Send a BCD number to PuTTY      ;
+; Send a BCD number to PuTTYï¿½ï¿½ï¿½ï¿½ï¿½ ;
 ;---------------------------------;
 Send_BCD mac
 	push    ar0
@@ -797,7 +797,7 @@ INIT_ALL:
         mov	TH1, #TIMER1_RELOAD
         setb    TR1
 
-        ; ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ SUS  ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓   
+        ; ? ? ? ? ? ? ? ? ? ? ? SUS  ? ? ? ? ? ? ? ? ? ? ? ? ?   
         ; works on its own from lab3, might interfere with other stuff though       ; NOTE TIMER ZERO HAS NOT YET BEEN TESTED       
         ; Using timer 0 for delay functions.  Initialize here:
 	;clr	TR0         ; Stop timer 0
@@ -973,7 +973,7 @@ OVEN_FSM:
 
                 lcall x_gt_y   ; if x > y-30, set PWM
                 jnb mf, $+3+3
-                mov PWM, #0 ; turn PWM off
+                mov PWM, #10 ; turn PWM off - commented out bc temp cant get above 70
 
                 mov y+0, temp_soak
                 mov y+1, #0
@@ -1058,7 +1058,7 @@ OVEN_FSM:
 
                 lcall x_gt_y   ; if x > y-30, set PWM
                 jnb mf, $+3+3
-                mov PWM, #0 ; turn PWM off
+                mov PWM, #5 ; turn PWM off - commented out
 
                 mov y+0, temp_refl
                 mov y+1, #0
@@ -1300,10 +1300,10 @@ main_program:
                 mov BCD+3, #0x0
                 mov BCD+4, #0x0
                 lcall send_temp_to_serial
-                mov a,  #'\r' ; Return character
-                lcall   putchar
-                mov a,  #'\n' ; New-line character
-                lcall   putchar
+                ;mov a,  #'\r' ; Return character # removed bc send_temp_to_serial accounts for this
+                ;lcall   putchar
+                ;mov a,  #'\n' ; New-line character
+                ;lcall   putchar
 
                 ljmp    enter_oven_fsm ; successful button press, enter oven FSM   
 
