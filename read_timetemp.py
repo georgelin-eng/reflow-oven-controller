@@ -7,58 +7,84 @@ import time #already added
 import serial
 import matplotlib.patches as patches
 
-#import re 
-#import pygame 
-#from tkinter import *
-#from PIL import ImageTk, Image
-#import tkinter.messagebox as messagebox
-# 
-## Initialize the pygame mixer 
-#pygame.mixer.init() 
-#airhorn_file = "C:\\Users\\maya2\\Desktop\\291pythonproj\\airhorn.mp3"
-#airhorn = pygame.mixer.Sound(airhorn_file)  
-#airhorn.play()
-#
-#def play_question():
-#
-#    win = Tk() #initializing window 
-#    win.geometry("700x500")
-#
-#    # Load and display the image
-#    img = Image.open("linares.png")
-#    img = img.resize((200, 350))
-#    img = ImageTk.PhotoImage(img)
-#    image_label = Label(win, image=img)
-#    image_label.pack()
-#
-#    # Create a Label Widget to display the text
-#    l = Label(win, text="Hello my student... \n Please prepare to reflow your first board")
-#    l.config(font=("Courier", 14))
-#    l.pack()
-#
-#    # Play the sound
-#    #airhorn_file = "C:\\Users\\maya2\\Desktop\\291pythonproj\\airhorn.mp3"
-#    #airhorn = pygame.mixer.Sound(airhorn_file)  
-#    #airhorn.play()
-#
-#    labrules_file = "C:\\Users\\maya2\\Desktop\\291pythonproj\\labrules.mp3" 
-#    labrules = pygame.mixer.Sound(labrules_file)  
-#
-#    win.after(int(airhorn.get_length() * 2000), lambda: win.destroy()) # Destroy window after sound finishes
-#    win.mainloop()
-#
-#    # After window closes, prompt user with a yes/no question
-#    response = messagebox.askyesno("Question", "Will you follow all lab safety procedures?")
-#
-#    if not response: # If yes, replay the question
-#        labrules.play()
-#        pygame.time.wait(int(labrules.get_length() * 1000)) 
-#        play_question()  
-#    else: # If no, exit the function
-#        return
-#
-#play_question()
-#pygame.init()
+import re 
+import pygame 
+from tkinter import *
+from PIL import ImageTk, Image
+import tkinter.messagebox as messagebox
+
+# Initialize the pygame mixer 
+pygame.init()
+pygame.mixer.init() 
+
+#audio files
+airhorn_file = "C:\\Users\\maya2\\Desktop\\291pythonproj\\airhorn.mp3"
+airhorn = pygame.mixer.Sound(airhorn_file)  
+airhorn.play()
+
+#reflow announcement
+reflow_file = "C:\\Users\\maya2\\Desktop\\291pythonproj\\reflow.mp3"
+reflowsound = pygame.mixer.Sound(reflow_file)  
+
+#safe to touch annoucement
+safetotouch_file = "C:\\Users\\maya2\\Desktop\\291pythonproj\\safetotouch.mp3"
+safetotouch = pygame.mixer.Sound(safetotouch_file)  
+
+#closing it is safe to touch annoucement
+thatisall_file = "C:\\Users\\maya2\\Desktop\\291pythonproj\\thatisall.mp3"
+thatisall = pygame.mixer.Sound(safetotouch_file)  
+
+#closing it is safe to touch annoucement
+soakstart_file = "C:\\Users\\maya2\\Desktop\\291pythonproj\\soakstart.mp3"
+soakstartaudio = pygame.mixer.Sound(soakstart_file)  
+
+#closing it is safe to touch annoucement
+ramptopeak_file = "C:\\Users\\maya2\\Desktop\\291pythonproj\\ramptopeak.mp3"
+ramptopeakaudio = pygame.mixer.Sound(ramptopeak_file)
+
+trumpet_file = "C:\\Users\\maya2\\Desktop\\291pythonproj\\trumpet.mp3"
+trumpet = pygame.mixer.Sound(trumpet_file)
+
+def play_question():
+
+   win = Tk() #initializing window 
+   win.geometry("700x500")
+
+   # Load and display the image
+   img = Image.open("linares.png")
+   img = img.resize((200, 350))
+   img = ImageTk.PhotoImage(img)
+   image_label = Label(win, image=img)
+   image_label.pack()
+
+   # Create a Label Widget to display the text
+   l = Label(win, text="Hello my student... \n Please prepare to reflow your first board")
+   l.config(font=("Courier", 14))
+   l.pack()
+
+   # Play the sound
+   #airhorn_file = "C:\\Users\\maya2\\Desktop\\291pythonproj\\airhorn.mp3"
+   #airhorn = pygame.mixer.Sound(airhorn_file)  
+   #airhorn.play()
+
+   labrules_file = "C:\\Users\\maya2\\Desktop\\291pythonproj\\labrules.mp3" 
+   labrules = pygame.mixer.Sound(labrules_file)  
+
+   win.after(int(airhorn.get_length() * 2000), lambda: win.destroy()) # Destroy window after sound finishes
+   win.mainloop()
+
+   # After window closes, prompt user with a yes/no question
+   response = messagebox.askyesno("Question", "Will you follow all lab safety procedures?")
+
+   if not response: # If yes, replay the question
+       labrules.play()
+       pygame.time.wait(int(labrules.get_length() * 1000)) 
+       play_question()  
+   else: # If no, exit the function
+       return
+
+play_question()
+
 #one ms for every increment of x, reflects 1 ms counter in t2 in ovencontroller FSM
 xsize=250 #remain cognizant of delays from division
 
@@ -79,17 +105,19 @@ p2sstart = 0
 coolstart = 0
 
 ser = serial.Serial(
-    port='COM10', #change to whichever serial port we end up using (e.g. COM5)
+    port='COM16', #change to whichever serial port we end up using (e.g. COM5)
     baudrate=115200,
     parity=serial.PARITY_NONE,
     stopbits=serial.STOPBITS_TWO,
     bytesize=serial.EIGHTBITS
 )
 ser.isOpen()    
-   
+
+
 def data_gen():
     #global line
     global soaktime, soaktemp, refltime, refltemp
+    global safetotouch, reflowsound, thatisall
     t = data_gen.t
     while 1:
         strin = ser.readline()# Get data from serial port
@@ -131,6 +159,7 @@ def run(data):
 
         
         if temperature>=soaktemp and soakflag != 1:
+            soakstartaudio.play()
             soakstart = t
             vlsoak.set_xdata(soakstart)
             rectpre.set_width(soakstart)
@@ -138,6 +167,7 @@ def run(data):
             soakflag = 1
 
         if soakflag == 1 and t-soakstart >= soaktime and p2sflag != 1:
+            ramptopeakaudio.play()
             p2sstart = t
             vlp2s.set_xdata(p2sstart)
             rectsoak.set_width(p2sstart-soakstart)
@@ -146,6 +176,7 @@ def run(data):
             p2sflag = 1
 
         if p2sflag == 1 and temperature >= refltemp and reflflag != 1:
+            reflowsound.play() #play the reflow annoucement
             reflstart = t
             vlrefl.set_xdata(reflstart)
             rectp2s.set_width(reflstart-p2sstart)
@@ -154,6 +185,7 @@ def run(data):
             reflflag = 1
 
         if reflflag == 1 and t-reflstart >= refltime and coolflag !=1:
+            trumpet.play()
             coolstart = t
             vlcool.set_xdata(t)
             rectrefl.set_width(coolstart-reflstart)
@@ -162,6 +194,8 @@ def run(data):
             coolflag = 1
 
         if coolflag == 1 and temperature <= 50 and safeflag != 1:
+            safetotouch.play() #play the safe to touch audio
+            pygame.time.wait(int(safetotouch.get_length() * 1000))
             vlsafe.set_xdata(t)
             rectcool.set_width(t-coolstart)
             rectcool.set_x(coolstart)
@@ -171,6 +205,7 @@ def run(data):
     return line_temp
 
 def on_close_figure(event):
+    thatisall.play()
     sys.exit(0)
 
 data_gen.t = -1
