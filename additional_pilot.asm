@@ -159,6 +159,7 @@ STOP_PIN              EQU P0.0
 SHARED_PIN            EQU P1.5 
 
 PWM_OUT               EQU P1.2 ; Pin 13
+DEFAULT_REFLOW_SETTING      EQU P1.6 ; change to correct pin later if necessary 
 
 ; FSM uses integer state encodings
 ; Menu states
@@ -182,6 +183,10 @@ MAX_TIME              EQU 90
 MIN_TIME              EQU 45
 MAX_TEMP              EQU 250
 MIN_TEMP              EQU 80
+
+; For non-volatile memory
+PAGE_ERASE_AP         EQU 00100010b
+BYTE_PROGRAM_AP       EQU 00100001b
 
 ; define vectors
 ORG 0x0000 ; Reset vector
@@ -211,6 +216,7 @@ VLED_ADC        : ds 2
 
 OVEN_STATE      : ds 1 ; stores oven FSM state
 MENU_STATE      : ds 1 ; stores menu FSM state
+DEFAULT_STATE   : ds 1
 temp_soak       : ds 1 
 time_soak       : ds 1
 temp_refl       : ds 1
@@ -219,7 +225,7 @@ time_refl       : ds 1
 ; pwm_counter     : ds 1 
 
 Count1ms        : ds 2 ; determines the number of 1ms increments that have passed 
-Count1ms0        : ds 2
+Count1ms0       : ds 2
 Count1ms_PWM    : ds 1
 seconds_elapsed	: ds 1
 exit_seconds    : ds 1 ; if we dont reach 50 c before 60 S terminate
@@ -304,6 +310,130 @@ soakTempLog:
 
 reflowTempLog:
     DB 'Reflow Temp: ', 0
+
+;---------------------------------;
+;  Function for saving variables  ;
+;  for non-volatile flash memory  ;
+;---------------------------------;
+Save_Variables:
+        CLR EA ; MUST disable interrupts for this to work!
+        
+        MOV TA, #0aah ; CHPCON is TA protected
+        MOV TA, #55h
+        ORL CHPCON, #00000001b ; IAPEN = 1, enable IAP mode
+        
+        MOV TA, #0aah ; IAPUEN is TA protected
+        MOV TA, #55h
+        ORL IAPUEN, #00000001b ; APUEN = 1, enable APROM update
+        
+        MOV IAPCN, #PAGE_ERASE_AP ; Erase page 3f80h~3f7Fh
+        MOV IAPAH, #3fh
+        MOV IAPAL, #80h
+        MOV IAPFD, #0FFh
+        MOV TA, #0aah ; IAPTRG is TA protected
+        MOV TA, #55h
+        ORL IAPTRG, #00000001b ; write 1 to IAPGO to trigger IAP process
+        
+        MOV IAPCN, #BYTE_PROGRAM_AP
+        MOV IAPAH, #3fh
+
+        ;Load 3f80h with temp_soak
+        MOV IAPAL, #80h
+        MOV IAPFD, temp_soak
+        MOV TA, #0aah
+        MOV TA, #55h
+        ORL IAPTRG,#00000001b
+
+        ;Load 3f81h with time_soak
+        MOV IAPAL, #81h
+        MOV IAPFD, time_soak
+        MOV TA, #0aah
+        MOV TA, #55h
+        ORL IAPTRG,#00000001b
+
+        ;Load 3f82h with temp_refl
+        MOV IAPAL, #82h
+        MOV IAPFD, temp_refl
+        MOV TA, #0aah
+        MOV TA, #55h
+        ORL IAPTRG,#00000001b
+
+        ;Load 3f82h with time_refl
+        MOV IAPAL, #83h
+        MOV IAPFD, time_refl
+        MOV TA, #0aah
+        MOV TA, #55h
+        ORL IAPTRG,#00000001b
+        
+        ;Load 3f84h with 55h
+        MOV IAPAL,#84h
+        MOV IAPFD, #55h
+        MOV TA, #0aah
+        MOV TA, #55h
+        ORL IAPTRG, #00000001b
+        
+        ;Load 3f85h with aah
+        MOV IAPAL, #85h
+        MOV IAPFD, #0aah
+        MOV TA, #0aah
+        MOV TA, #55h
+        ORL IAPTRG, #00000001b
+        MOV TA, #0aah
+        MOV TA, #55h
+        ANL IAPUEN, #11111110b ; APUEN = 0, disable APROM update
+        MOV TA, #0aah
+        MOV TA, #55h
+        ANL CHPCON, #11111110b ; IAPEN = 0, disable IAP mode
+        
+        setb EA ; Re-enable interrupts
+        
+        ret
+
+
+;-----------------------;
+; Function for loading  ;
+;       variables       ;
+;-----------------------;
+Load_Variables:
+        mov dptr, #0x3f84 ; First key value location. Must be 0x55
+        clr a
+        movc a, @a+dptr
+        cjne a, #0x55, Load_Defaults
+        inc dptr ; Second key value location. Must be 0xaa
+        clr a
+        movc a, @a+dptr
+        cjne a, #0xaa, Load_Defaults
+        
+        mov dptr, #0x3f80
+        clr a
+        movc a, @a+dptr
+        mov temp_soak, a
+        
+        inc dptr
+        clr a
+        movc a, @a+dptr
+        mov time_soak, a
+        
+        inc dptr
+        clr a
+        movc a, @a+dptr
+        mov temp_refl, a
+        
+        inc dptr
+        clr a
+        movc a, @a+dptr
+        mov time_refl, a
+        
+        ret
+
+Load_Defaults:
+        mov temp_soak, #1
+        mov time_soak, #2
+        mov temp_refl, #3
+        mov time_refl, #4
+        
+        ret
+
 
 ; Messages to display on LCD when in Oven Controller FSM
 
@@ -1170,6 +1300,76 @@ ret ; technically unncessary
 MENU_FSM: 
         ; lcall configure_LCD_multiplexing
         mov     pwm, #0
+        jb DEFAULT_REFLOW_SETTING, dont_change_default_settings  ; Button logic
+	Wait_Milli_Seconds(#50)	
+	jb DEFAULT_REFLOW_SETTING, dont_change_default_settings  
+	jnb DEFAULT_REFLOW_SETTING, $		; Wait for button release.  The '$' means: jump to same instruction.
+
+        ;If its pressed enter this mini FSM
+        mov a, DEFAULT_STATE
+        
+        cjne a, #2, check_1
+        mov a, #0 
+        mov DEFAULT_STATE, a
+        
+        mov a, #40 ;set time soak
+        mov time_soak, a
+
+        mov a, #60
+        mov time_refl, a
+        
+        mov a, #120
+        mov temp_soak, a
+        
+        mov a, #160
+        mov temp_refl, a
+        ljmp dont_change_default_settings
+
+        check_1:
+        cjne a, #1, check_0
+        mov a, #2
+        mov DEFAULT_STATE, a        
+        mov a, #20
+        mov time_soak, A
+        
+        mov a, #40
+        mov time_refl, a 
+        
+        mov a, #60 
+        mov temp_soak, a 
+        
+        mov a, #80 
+        mov temp_refl, a  ; values 
+
+        ljmp dont_change_default_settings
+        
+        check_0:
+        mov a, #1
+        mov DEFAULT_STATE, a
+        
+        mov a, #70 ;set time soak
+        mov time_soak, a
+
+        mov a, #40
+        mov time_refl, a
+        
+        mov a, #100
+        mov temp_soak, a
+        
+        mov a, #50
+        mov temp_refl, a
+        ljmp dont_change_default_settings
+
+
+
+
+;settings 1 at a = 0
+;settigngs 2 at a = 1
+;settings 3 at  a = 2
+;then loop
+
+
+        dont_change_default_settings:
         mov     a, MENU_STATE 
         check_Push_Button (PB_CHANGE_MENU_PIN, checkTimeInc) ; increments menu state
         inc     a
