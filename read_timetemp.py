@@ -5,6 +5,8 @@ import matplotlib.animation as animation
 import sys, time, math
 import time #already added
 import serial
+import matplotlib.patches as patches
+
 #import re 
 #import pygame 
 #from tkinter import *
@@ -65,21 +67,19 @@ soaktemp = 80
 refltime = 15
 refltemp = 110
 
-#soakpos = -1
 soakflag = 0 #so we only set the flag once
 p2sflag = 0
 reflflag = 0
 coolflag = 0
 safeflag = 0
 
-soakstart = 100000 #marks the time sin
-reflstart = 100000 #marks the time since we started rreflow
-#p2spos = -1
-#reflpos = -1
-#coolpos = -1
+soakstart = 0 #marks the time sin
+reflstart = 0 #marks the time since we started reflow
+p2sstart = 0
+coolstart = 0
 
 ser = serial.Serial(
-    port='COM6', #change to whichever serial port we end up using (e.g. COM5)
+    port='COM10', #change to whichever serial port we end up using (e.g. COM5)
     baudrate=115200,
     parity=serial.PARITY_NONE,
     stopbits=serial.STOPBITS_TWO,
@@ -95,7 +95,7 @@ def data_gen():
         strin = ser.readline()# Get data from serial port
         strin = strin.rstrip() # Remove trailing characters from the string
         print(strin)
-        strin = strin.decode() # Change string encoding to utf-8 (compatible with ASCII)
+        #strin = strin.decode() # Change string encoding to utf-8 (compatible with ASCII)
         
         
         try:
@@ -116,7 +116,7 @@ def data_gen():
 
 def run(data):
     # update the data
-    global soakstart, reflstart, soakflag, p2sflag, reflflag, coolflag, safeflag
+    global soakstart, reflstart, p2sstart, coolstart, soakflag, p2sflag, reflflag, coolflag, safeflag
     t, temperature = data
     if t>-1:
         xdata.append(t)
@@ -127,29 +127,45 @@ def run(data):
 
         line_temp.set_data(xdata, temp_data)
         
-        l1.get_texts()[0].set_text(f"Temp = {round(temperature,2)} °C \n        = {round((temperature * 9/5 + 35),2)} °F")
+        l1.get_texts()[0].set_text(f"Temp = {round(temperature,2)} °C \n         = {round((temperature * 9/5 + 35),2)} °F")
 
         
         if temperature>=soaktemp and soakflag != 1:
             soakstart = t
             vlsoak.set_xdata(soakstart)
+            rectpre.set_width(soakstart)
+            ax.add_patch(rectpre)
             soakflag = 1
 
         if soakflag == 1 and t-soakstart >= soaktime and p2sflag != 1:
-            vlp2s.set_xdata(t)
+            p2sstart = t
+            vlp2s.set_xdata(p2sstart)
+            rectsoak.set_width(p2sstart-soakstart)
+            rectsoak.set_x(soakstart)
+            ax.add_patch(rectsoak)
             p2sflag = 1
 
         if p2sflag == 1 and temperature >= refltemp and reflflag != 1:
             reflstart = t
             vlrefl.set_xdata(reflstart)
+            rectp2s.set_width(reflstart-p2sstart)
+            rectp2s.set_x(p2sstart)
+            ax.add_patch(rectp2s)
             reflflag = 1
 
         if reflflag == 1 and t-reflstart >= refltime and coolflag !=1:
+            coolstart = t
             vlcool.set_xdata(t)
+            rectrefl.set_width(coolstart-reflstart)
+            rectrefl.set_x(reflstart)
+            ax.add_patch(rectrefl)
             coolflag = 1
 
         if coolflag == 1 and temperature <= 50 and safeflag != 1:
             vlsafe.set_xdata(t)
+            rectcool.set_width(t-coolstart)
+            rectcool.set_x(coolstart)
+            ax.add_patch(rectcool)
             safeflag = 1
 
     return line_temp
@@ -164,7 +180,7 @@ ax = fig.add_subplot(111)
 # creates an empty plot
 line_temp, = ax.plot([],[],lw=2,color = 'pink', label = 'Temperature, degrees C')
 
-l1 = ax.legend()
+
 
 ax.set_ylim(0, 250) #define range of graph
 ax.set_xlim(0, xsize)
@@ -179,6 +195,18 @@ vlp2s = plt.axvline(x = -1, color='y')
 vlrefl = plt.axvline(x = -1, color='r')
 vlcool = plt.axvline(x = -1, color='b')
 vlsafe = plt.axvline(x=-1, color='m')
+
+l2 = ax.legend([vlsoak, vlp2s, vlrefl, vlcool, vlsafe], ['preheat','soak', 'peak to soak', 'reflow', 'cooling'], loc = 4)
+ax.add_artist(l2)
+l1 = ax.legend(handles = [line_temp], loc=1)
+
+rectpre = patches.Rectangle((0, 0), 0, 250, linewidth=0, facecolor='g', alpha = 0.4)
+rectsoak = patches.Rectangle((0, 0), 0, 250, linewidth=0, facecolor='y', alpha = 0.4)
+rectp2s = patches.Rectangle((0, 0), 0, 250, linewidth=0, facecolor='r', alpha = 0.4)
+rectrefl = patches.Rectangle((0, 0), 0, 250, linewidth=0, facecolor='b', alpha = 0.4)
+rectcool = patches.Rectangle((0, 0), 0, 250, linewidth=0, facecolor='m', alpha = 0.4)
+
+
 
 
 # Important: Although blit=True makes graphing faster, we need blit=False to prevent
