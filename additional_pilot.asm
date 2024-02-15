@@ -179,9 +179,10 @@ OVEN_STATE_FINISHED   EQU 5
 COOLED_TEMP           EQU 50 ; once cooled to this temperature, the reflow is now "finished"
 COOLED_TEMP_LOAD_MATH EQU COOLED_TEMP*10000 ; use to load up the math
 FINISHED_SECONDS      EQU 5
-MAX_TIME              EQU 90
-MIN_TIME              EQU 45
-MAX_TEMP              EQU 250
+MAX_SOAK_TIME         EQU 120
+MAX_REFLOW_TIME       EQU 45
+MIN_TIME              EQU 15
+MAX_TEMP              EQU 240
 MIN_TEMP              EQU 80
 
 ; For non-volatile memory
@@ -427,10 +428,10 @@ Load_Variables:
         ret
 
 Load_Defaults:
-        mov temp_soak, #1
-        mov time_soak, #2
-        mov temp_refl, #3
-        mov time_refl, #4
+        mov temp_soak, #MIN_TEMP ; change to correct default later
+        mov time_soak, #MIN_TIME ; change to correct default later
+        mov temp_refl, #120      ; change to correct default later
+        mov time_refl, #MIN_TIME ; change to correct default later
         
         ret
 
@@ -1026,7 +1027,6 @@ STOP_PROCESS:
 OVEN_FSM:
         Wait_Milli_Seconds(#50)                                 
         
-
         check_Push_Button (PB_STOP_PIN, enterOvenStateCheck)    
         setb    TIME_TO_BEEP_FLAG
         lcall   STOP_PROCESS
@@ -1037,8 +1037,6 @@ OVEN_FSM:
         
         ovenFSM_preheat:
 
-                ;
-                
                 ; long jump for relative offset
                 cjne    a, #OVEN_STATE_PREHEAT, ovenFSM_soak_jmp
                 sjmp    oven_state_preheat_tasks
@@ -1297,7 +1295,10 @@ OVEN_FSM:
 ret ; technically unncessary
 
 MENU_FSM: 
-        ; lcall configure_LCD_multiplexing
+        ; Load variables for non-volatile memory
+        ; Put at the menu FSM since this is where the variables are being set and displayed - GL
+        lcall Load_Variables
+
         mov     pwm, #0
         jb DEFAULT_REFLOW_SETTING, dont_change_default_settings  ; Button logic
 	Wait_Milli_Seconds(#50)	
@@ -1311,33 +1312,34 @@ MENU_FSM:
         mov a, #0 
         mov DEFAULT_STATE, a
         
-        mov a, #40 ;set time soak
+        mov a, #60 ;set time soak
         mov time_soak, a
 
-        mov a, #60
+        mov a, #30
         mov time_refl, a
         
-        mov a, #120
+        mov a, #140
         mov temp_soak, a
         
-        mov a, #160
+        mov a, #220
         mov temp_refl, a
         ljmp dont_change_default_settings
 
         check_1:
         cjne a, #1, check_0
         mov a, #2
-        mov DEFAULT_STATE, a        
-        mov a, #20
+        mov DEFAULT_STATE, a  
+
+        mov a, #90
         mov time_soak, A
         
-        mov a, #40
+        mov a, #60
         mov time_refl, a 
         
-        mov a, #60 
+        mov a, #200
         mov temp_soak, a 
         
-        mov a, #80 
+        mov a, #240
         mov temp_refl, a  ; values 
 
         ljmp dont_change_default_settings
@@ -1346,16 +1348,16 @@ MENU_FSM:
         mov a, #1
         mov DEFAULT_STATE, a
         
-        mov a, #70 ;set time soak
+        mov a, #75 ;set time soak
         mov time_soak, a
 
-        mov a, #40
+        mov a, #45
         mov time_refl, a
         
-        mov a, #100
+        mov a, #170
         mov temp_soak, a
         
-        mov a, #50
+        mov a, #230
         mov temp_refl, a
         ljmp dont_change_default_settings
 
@@ -1387,7 +1389,7 @@ MENU_FSM:
 
                         ; check if time_soak will need to reset - assumes multiples of 5
                         ; +5 to constants so they display on LCD b/f reseting
-                        cjne a, #(MAX_TIME+5), checkTempInc 
+                        cjne a, #(MAX_SOAK_TIME+5), checkTempInc 
                         mov a, #MIN_TIME
                         mov time_soak, a
 
@@ -1397,7 +1399,7 @@ MENU_FSM:
                         add     A, #5
                         mov     time_refl, a
 
-                        cjne a, #(MAX_TIME+5), checkTempInc
+                        cjne a, #(MAX_REFLOW_TIME+5), checkTempInc
                         mov a, #MIN_TIME
                         mov time_refl, a
 
@@ -1463,6 +1465,7 @@ MENU_FSM:
                 ljmp    menu_FSM_done
 
         menu_FSM_done:
+                lcall Save_Variables ; save variabels before exiting the menu FSM
                 ret
 
 main_program:

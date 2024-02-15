@@ -6,6 +6,7 @@ import sys, time, math
 import time #already added
 import serial
 import matplotlib.patches as patches
+import pandas as pd
 
 import re 
 import pygame 
@@ -42,8 +43,16 @@ soakstartaudio = pygame.mixer.Sound(soakstart_file)
 ramptopeak_file = "C:\\Users\\maya2\\Desktop\\291pythonproj\\ramptopeak.mp3"
 ramptopeakaudio = pygame.mixer.Sound(ramptopeak_file)
 
+#celly trumpet
 trumpet_file = "C:\\Users\\maya2\\Desktop\\291pythonproj\\trumpet.mp3"
 trumpet = pygame.mixer.Sound(trumpet_file)
+
+#warning temperature TOO HIGH!!
+temptoohigh = 240
+temptoohighflag = 0 #so we don't repeatedly say too high
+warningtoohigh_file = "C:\\Users\\maya2\\Desktop\\291pythonproj\\trumpet.mp3"
+warningtoohigh = pygame.mixer.Sound(warningtoohigh_file)
+
 
 def play_question():
 
@@ -195,17 +204,26 @@ def run(data):
 
         if coolflag == 1 and temperature <= 50 and safeflag != 1:
             safetotouch.play() #play the safe to touch audio
-            pygame.time.wait(int(safetotouch.get_length() * 1000))
             vlsafe.set_xdata(t)
             rectcool.set_width(t-coolstart)
             rectcool.set_x(coolstart)
             ax.add_patch(rectcool)
             safeflag = 1
 
+        if temptoohighflag != 1 and temperature > temptoohigh:
+            warningtoohigh.play()
+            temptoohighflag = 0
+
     return line_temp
 
 def on_close_figure(event):
     thatisall.play()
+    df = pd.DataFrame(
+        {
+            "Temperature (C)" : temp_data
+        }
+    )
+    df.to_excel("tempdata.xlsx")
     sys.exit(0)
 
 data_gen.t = -1

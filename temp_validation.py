@@ -96,7 +96,7 @@ def exit_handler():
             "Microcontroller" : avgmicdata,
         }
     )
-    df.to_excel("Proj1.xlsx")
+    df.to_excel("tempvalidation.xlsx")
     print('done!')
     sys.exit()
 
