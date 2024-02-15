@@ -114,7 +114,7 @@ p2sstart = 0
 coolstart = 0
 
 ser = serial.Serial(
-    port='COM16', #change to whichever serial port we end up using (e.g. COM5)
+    port='COM6', #change to whichever serial port we end up using (e.g. COM5)
     baudrate=115200,
     parity=serial.PARITY_NONE,
     stopbits=serial.STOPBITS_TWO,
@@ -218,6 +218,7 @@ def run(data):
 
 def on_close_figure(event):
     thatisall.play()
+    pygame.time.wait(int(thatisall.get_length() * 1000)) 
     df = pd.DataFrame(
         {
             "Temperature (C)" : temp_data

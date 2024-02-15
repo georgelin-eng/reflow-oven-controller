@@ -1,5 +1,6 @@
 
 
+
 ; Main file. FSM implementing the following sequence:
 ;       State 0: Power = 0% (default state)
 ;               if start = NO, self loop; if start = YES, next state
@@ -43,9 +44,13 @@ check_Push_Button MAC ; new one with multiplexed buttons
         clr STOP_PIN
 
         ; debounce
-        jb SHARED_PIN, %1 ; use helper label to jump to the end
+        jb SHARED_PIN, $+2+3 ; use helper label to jump to the end
+        sjmp $+2+3
+        ljmp %1
         Wait_Milli_Seconds(#50)
-        jb SHARED_PIN, %1
+        jb SHARED_PIN, $+2+3
+        sjmp $+2+3
+        ljmp %1
 
         ; Set the LCD data pins to logic 1
         setb START_PIN
@@ -80,7 +85,11 @@ check_Push_Button MAC ; new one with multiplexed buttons
         mov PB_STOP_PIN, c
         setb STOP_PIN
 
-        jb %0, %1 ; check that the variable flag is not 1, otherwise jmp
+        ; jb %0, %1 ; check that the variable flag is not 1, otherwise jmp
+
+        jb %0, $+2+3 ; check that the variable flag is not 1, otherwise jmp
+        sjmp $+2+3
+        ljmp %1     ; can access anypart of the code
 
 ENDMAC
 
@@ -312,6 +321,9 @@ soakTempLog:
 reflowTempLog:
     DB 'Reflow Temp: ', 0
 
+debug:
+    DB '!!!!!!!!!', 0
+
 ;---------------------------------;
 ;  Function for saving variables  ;
 ;  for non-volatile flash memory  ;
@@ -526,7 +538,7 @@ Timer2_Init:
         setb    TR2  ; Enable timer 2
 	ret
 
-Timer0_ISR: ; PASTED- AL
+Timer0_ISR: 
         ;clr TF0  ; According to the data sheet this is done for us already.
 	; Timer 0 doesn't have 16-bit auto-reload, so
 	clr TR0
@@ -563,7 +575,7 @@ Timer2_ISR:
         inc     Count1ms+1    
 
 
-        
+
         Inc_done:
         ; If not in oven, skip PWM
         jnb    IN_OVEN_FLAG, skipPWM
@@ -601,8 +613,8 @@ Timer2_ISR:
         ; ---  1s has passed ----
         clr   TIME_TO_BEEP_FLAG
         lcall DO_TEMP_READ
-        lcall hex2bcd ; puts value of x into BCD varaibles
-        lcall send_temp_to_serial
+        lcall hex2bcd ; puts value of x into BCD
+        lcall send_temp_to_serial ; puts BCD values onto serial
         
         clr     a
         mov     Count1ms+0, a
@@ -694,7 +706,7 @@ InitSerialPort:
 	anl	TMOD, #0x0F ; Clear the configuration bits for timer 1
 	orl	TMOD, #0x20 ; Timer 1 Mode 2
 	mov	TH1, #TIMER1_RELOAD
-	setb TR1
+	setb    TR1
         ret
         
 ;jesus' beautiful averaging code, can be used in place of Read_ADC in place where we read
@@ -785,42 +797,42 @@ DO_TEMP_READ:
         mov y+3, #0
         lcall div32 ; x stores thermocouple voltage
 
-        Load_y(81)
+        Load_y(80) ; shouldn't this be 27300 and a subtraction
         lcall mul32
 
-        ; code to use temp sensor for amb temp
-        ;push x
-;
-        ;anl ADCCON0, #0xF0
-        ;orl ADCCON0, #0x01 ; Select channel 1
-        ;lcall Read_ADC
-;
-        ;mov x+0, R0
-        ;mov x+1, R1
-        ;; Pad other bits with zero
-        ;mov x+2, #0
-        ;mov x+3, #0
-        ;Load_y(20500) ; The MEASURED LED voltage: 2.074V, with 4 decimal places
-        ;lcall mul32
-        ;; Retrive the ADC LED value
-        ;mov y+0, VLED_ADC+0
-        ;mov y+1, VLED_ADC+1
-        ;; Pad other bits with zero
-        ;mov y+2, #0
-        ;mov y+3, #0
-        ;lcall div32
-;
-        ;load_y(100)
-        ;lcall mul32
-        ;
-        ;
-        ;load_y(273000)
-        ;lcall sub32
-;
-        ;mov y+0, x+0
-        ;mov y+1, x+1
-        ;mov y+2, x+2
-        ;mov y+3, x+3
+;         ; code to use temp sensor for amb temp
+;         ;push x
+; ;
+;         anl ADCCON0, #0xF0
+;         orl ADCCON0, #0x01 ; Select channel 1, pin 5
+;         lcall READ_ADC 
+; ;
+;         mov z+0, R0
+;         mov z+1, R1
+;         ;; Pad other bits with zero
+;         mov z+2, #0
+;         mov z+3, #0
+;         Load_y(20500) ; The MEASURED LED voltage: 2.074V, with 4 decimal places
+;         lcall mul32z  ;
+;         ;; Retrive the ADC LED value
+;         mov y+0, VLED_ADC+0
+;         mov y+1, VLED_ADC+1
+;         ;; Pad other bits with zero
+;         mov y+2, #0
+;         mov y+3, #0
+;         lcall div32z ; new func
+; ;
+;         ;load_y(100)
+;         ;lcall mul32z
+;         ;
+;         ;
+;         load_y(27300)
+;         lcall sub32z  
+; ;
+;         mov y+0, z+0
+;         mov y+1, z+1
+;         mov y+2, z+2
+;         mov y+3, z+3
 ;
         ;lcall hex2bcd
         ;lcall send_temp_to_serial
@@ -833,7 +845,7 @@ DO_TEMP_READ:
         ret
 
 ;---------------------------------;
-; Send a BCD number to PuTTYï¿½ï¿½ï¿½ï¿½ï¿½ ;
+;  Send a BCD number to PuTTY     ;
 ;---------------------------------;
 Send_BCD mac
 	push    ar0
@@ -935,7 +947,7 @@ INIT_ALL:
 	;orl	CKCON,#0x08 ; CLK is the input for timer 0
 	;anl	TMOD,#0xF0  ; Clear the configuration bits for timer 0
 	;orl	TMOD,#0x01  ; Timer 0 in Mode 1: 16-bit timer
-        ; ^ ^ ^ ^ ^ ^ ^ ^^ ^ ^ ^ ^ ^^ ^ ^ ^ ^^ ^ ^ ^            
+        ; ^ ^ ^ ^ ^ ^ ^ ^^ ^ ^ ^ ^ ^^ ^ ^ ^ ^^ ^ ^ ^   
 	
 	; Initialize the pins used by the ADC (P1.1, P1.7) as input.
 	orl	P1M1, #0b10000010
@@ -1003,9 +1015,6 @@ STOP_PROCESS:
         mov x+2, #0
         mov x+3, #0
 
-        ; mov DPTR, #emergency
-        ; lcall SendString
-
         ; Do not disable TR2, otherwise temperature will no longer be sent to serial
         ; clr     TR2 ; disable timer 2 so that it doesn't count up in background ; 
         clr     ENABLE_SEC_INC_FLAG ; 
@@ -1026,7 +1035,7 @@ STOP_PROCESS:
 ;       display on time and temp LCD
 OVEN_FSM:
         Wait_Milli_Seconds(#50)                                 
-        
+
         check_Push_Button (PB_STOP_PIN, enterOvenStateCheck)    
         setb    TIME_TO_BEEP_FLAG
         lcall   STOP_PROCESS
@@ -1034,7 +1043,39 @@ OVEN_FSM:
         ; check oven state if stop button is not pressed
         enterOvenStateCheck:
                 mov  a, OVEN_STATE
-        
+                        
+                ; emergency exit if temperature > 240 degrees
+                ; checks if temp is valid first (< 300 degrees)
+                load_y (3000000)
+                lcall x_gt_y               ; sets mf to 1 if x > 300 degrees
+                jb mf, ovenFSM_preheat ; jmp to state check if temperature is invalid
+
+                ; Valid temperature
+                load_y (2400000)           ; change this value to configure emergency temp
+                lcall x_gt_y
+                jnb mf, ovenFSM_preheat   ; skip if x < 240 degrees 
+                mov seconds_elapsed, #0 ; reset
+                emergencyStop_tempTooHigh:
+                        setb TIME_TO_BEEP_FLAG  ; beep once, move to inside for continuous?
+                        mov pwm, #0
+                        Set_Cursor(1, 1)
+                        Send_Constant_String(#stopMessage)
+                        Send_Constant_String(#LCD_clearLine)
+                        Set_Cursor(2, 14)
+                        mov     a, seconds_elapsed
+                        lcall   SendToLCD ; send seconds to LCD
+                        mov     a, total_seconds
+                        set_cursor(1, 14)
+                        lcall   SendToLCD
+                        lcall   hex2bcd
+                        lcall   Display_formated_BCD
+
+                        ; check if seconds > 10
+                        mov     a, seconds_elapsed
+                        cjne    a, #10, emergencyStop_tempTooHigh ; loop back to start until seconds_elapsed = 10
+                        ; number of seconds elapsed is enough, exit
+                        lcall STOP_PROCESS
+              
         ovenFSM_preheat:
 
                 ; long jump for relative offset
@@ -1043,7 +1084,7 @@ OVEN_FSM:
                 ovenFSM_soak_jmp:
                         ljmp    ovenFSM_soak
                 oven_state_preheat_tasks:
-                        mov     pwm, #80
+                        mov     pwm, #100
                         Set_Cursor(1, 1)
                         Send_Constant_String(#preheatMessage)
                         Send_Constant_String(#LCD_clearLine)
@@ -1054,7 +1095,6 @@ OVEN_FSM:
                         set_cursor(1, 14)
                         lcall   SendToLCD
                         lcall   hex2bcd
-                        ; lcall   send_temp_to_serial
                         lcall   Display_formated_BCD
 
                 ;Emergency exit process; tested, works
@@ -1070,38 +1110,29 @@ OVEN_FSM:
                 ljmp    STOP_PROCESS ; more then 60 seconds has elapsed and we are below 50C ESCAPE
                 
         Skip_Emergency_exit:       
+                ; This is to prevent overshoot
                 ; State transition check ; if x > temp_soak, next state ; else, self loop
                 mov y+0, temp_soak
                 mov y+1, #0
                 mov y+2, #0
                 mov y+3, #0        
                 load_z(10000)
-                lcall mul32z
+                lcall mul32z      ; z = temp_soak * 10000
                 mov y+0, z+0
                 mov y+1, z+1
                 mov y+2, z+2
-                mov y+3, z+3     ; y = y * 10000
+                mov y+3, z+3      ; y = temp_soak * 10000
                 load_z(250000)
-                lcall sub32z    ; y = y - 25
-                
-                ; print value of y to serial for debugging
-                ; mov a, y+3
-                ; lcall SendToSerialPort
-                ; mov a, y+2
-                ; lcall SendToSerialPort
-                ; mov a, y+1
-                ; lcall SendToSerialPort
-                ; mov a, y+0
-                ; lcall SendToSerialPort
+                lcall sub32yyz    ; y = y - 25
 
-                ; mov a,  #'\r' ; Return character
-                ; lcall   putchar
-                ; mov a,  #'\n' ; New-line character
-                ; lcall   putchar
-
-                lcall x_gt_y   ; if x > y-30, set PWM
+                lcall x_gt_y      ; if x > y-30, set PWM
                 jnb mf, $+3+3
-                mov PWM, #10 ; turn PWM off - commented out bc temp cant get above 70
+                mov PWM, #15 ; turn PWM off - commented out bc temp cant get above 70
+
+                ; Checking that temperature < 300
+                load_y(3000000)
+                lcall x_gt_y                    ; if x > 240, mf = 1
+                jb mf, noChange_preHeat         
 
                 mov y+0, temp_soak
                 mov y+1, #0
@@ -1134,8 +1165,7 @@ OVEN_FSM:
                 lcall   SendToLCD
                 mov     a, total_seconds
                 set_cursor(1, 14)
-                lcall SendToLCD
-                
+                lcall   SendToLCD
                 lcall   hex2bcd
                 lcall   Display_formated_BCD
 
@@ -1155,7 +1185,7 @@ OVEN_FSM:
                 ovenFSM_reflow_jmp:
                 ljmp ovenFSM_reflow
                 ovenFSM_Ramp2Peak_task:
-                mov     pwm, #80
+                mov     pwm, #90
                 Set_Cursor(1, 1)
                 Send_Constant_String(#ramp2peakMessage)
                 Send_Constant_String(#LCD_clearLine)
@@ -1164,8 +1194,7 @@ OVEN_FSM:
                 lcall   SendToLCD
                 mov     a, total_seconds
                 set_cursor(1, 14)
-                lcall SendToLCD
-
+                lcall   SendToLCD
                 lcall   hex2bcd
                 lcall   Display_formated_BCD
 
@@ -1181,11 +1210,16 @@ OVEN_FSM:
                 mov y+2, z+2
                 mov y+3, z+3     ; y = y * 10000
                 load_z(100000)
-                lcall sub32z    ; y = y - 10
+                lcall sub32yyz    ; y = y - 10
 
                 lcall x_gt_y   ; if x > y-10, set PWM
                 jnb mf, $+3+3
-                mov PWM, #5 ; turn PWM off - commented out
+                mov PWM, #35 ; turn PWM off - commented out
+
+                ; Checking that temperature < 240
+                load_y(3000000)
+                lcall x_gt_y                    ; if x > 240, mf = 1
+                jb mf, noChange_Ramp2Peak         
 
                 mov y+0, temp_refl
                 mov y+1, #0
@@ -1210,7 +1244,7 @@ OVEN_FSM:
                 
         ovenFSM_reflow:
                 cjne    a, #OVEN_STATE_REFLOW, ovenFSM_cooling
-                mov     pwm, #5
+                mov     pwm, #10
                 Set_Cursor(1, 1)
                 Send_Constant_String(#reflowMessage)
                 Send_Constant_String(#LCD_clearLine)
@@ -1219,8 +1253,7 @@ OVEN_FSM:
                 lcall   SendToLCD
                 mov     a, total_seconds
                 set_cursor(1, 14)
-                lcall SendToLCD
-
+                lcall   SendToLCD
                 lcall   hex2bcd
                 lcall   Display_formated_BCD
 
@@ -1245,10 +1278,8 @@ OVEN_FSM:
                 lcall   SendToLCD
                 mov     a, total_seconds
                 set_cursor(1, 14)
-                lcall SendToLCD
-
+                lcall   SendToLCD
                 lcall   hex2bcd
-                ; lcall   send_temp_to_serial
                 lcall   Display_formated_BCD
 
                 ; once temperature is low (compare with temp constant)
@@ -1333,7 +1364,7 @@ MENU_FSM:
         mov a, #90
         mov time_soak, A
         
-        mov a, #60
+        mov a, #40
         mov time_refl, a 
         
         mov a, #200
@@ -1438,7 +1469,7 @@ MENU_FSM:
                 mov     a, temp_soak
                 lcall   SendToLCD
                 Send_Constant_String(#LCD_clearLine)
-                Set_Cursor(2, 1)
+                Set_Cursor(2, 1) 
                 Send_Constant_String(#LCD_soakTime)
                 mov     a, time_soak
                 lcall   SendToLCD
@@ -1495,7 +1526,8 @@ main_program:
                 setb    TIME_TO_BEEP_FLAG
                 setb    TR0
 
-                ; Send 0 to the serial
+                ; Send 0 to the serial 
+                ; Condition: In main menu and start button is pressed
                 mov BCD+0, #0x0
                 mov BCD+1, #0x0
                 mov BCD+2, #0x0

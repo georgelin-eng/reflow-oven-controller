@@ -209,6 +209,26 @@ add32:
 	pop acc
 	ret
 
+; z = z + y , x = z , y = y
+add32z:
+	push acc
+	push psw
+	mov a, z+0
+	add a, y+0
+	mov z+0, a
+	mov a, z+1
+	addc a, y+1
+	mov z+1, a
+	mov a, z+2
+	addc a, y+2
+	mov z+2, a
+	mov a, z+3
+	addc a, y+3
+	mov z+3, a
+	pop psw
+	pop acc
+	ret
+
 ;------------------------------------------------
 ; x = x - y
 ;------------------------------------------------
@@ -231,8 +251,30 @@ sub32:
 	pop psw
 	pop acc
 	ret
-; y = y - z from x = x - y ; x -> y, y -> z
+
+; z = z - y replaced x with z
 sub32z:
+	push acc
+	push psw
+	clr c
+	mov a, z+0
+	subb a, y+0
+	mov z+0, a
+	mov a, z+1
+	subb a, y+1
+	mov z+1, a
+	mov a, z+2
+	subb a, y+2
+	mov z+2, a
+	mov a, z+3
+	subb a, y+3
+	mov z+3, a
+	pop psw
+	pop acc
+	ret
+
+; y = y - z replaced y with z then x with y
+sub32yyz:
 	push acc
 	push psw
 	clr c
@@ -251,26 +293,6 @@ sub32z:
 	pop psw
 	pop acc
 	ret
-; ; y = y - z
-; sub32z:
-; 	push acc
-; 	push psw
-; 	clr c
-; 	mov a, y+0
-; 	subb a, z+0
-; 	mov y+0, a
-; 	mov a, y+1
-; 	subb a, z+1
-; 	mov y+1, a
-; 	mov a, y+2
-; 	subb a, z+2
-; 	mov y+2, a
-; 	mov a, y+3
-; 	subb a, z+3
-; 	mov y+3, a
-; 	pop psw
-; 	pop acc
-; 	ret
 
 ;------------------------------------------------
 ; mf=1 if x < y
@@ -673,6 +695,99 @@ div32_minus:
 	djnz R4, div32_loop	; -> no
 	
 div32_exit:
+
+	pop AR4
+	pop AR3
+	pop AR2
+	pop AR1
+	pop AR0
+	pop psw
+	pop acc
+	
+	ret
+
+; z = z / y from x = x / y
+div32z:
+	push acc
+	push psw
+	push AR0
+	push AR1
+	push AR2
+	push AR3
+	push AR4
+	
+	mov	R4,#32
+	clr	a
+	mov	R0,a
+	mov	R1,a
+	mov	R2,a
+	mov	R3,a
+	
+div32z_loop:
+	; Shift the 64-bit of [[R3..R0], x] left:
+	clr c
+	; First shift z:
+	mov	a,z+0
+	rlc a
+	mov	z+0,a
+	mov	a,z+1
+	rlc	a
+	mov	z+1,a
+	mov	a,z+2
+	rlc	a
+	mov	z+2,a
+	mov	a,z+3
+	rlc	a
+	mov	z+3,a
+	; Then shift [R3..R0]:
+	mov	a,R0
+	rlc	a 
+	mov	R0,a
+	mov	a,R1
+	rlc	a
+	mov	R1,a
+	mov	a,R2
+	rlc	a
+	mov	R2,a
+	mov	a,R3
+	rlc	a
+	mov	R3,a
+	
+	; [R3..R0] - y
+	clr c	     
+	mov	a,R0
+	subb a,y+0
+	mov	a,R1
+	subb a,y+1
+	mov	a,R2
+	subb a,y+2
+	mov	a,R3
+	subb a,y+3
+	
+	jc	div32_minus		; temp >= y?
+	
+	; -> yes;  [R3..R0] -= y;
+	; clr c ; carry is always zero here because of the jc above!
+	mov	a,R0
+	subb a,y+0 
+	mov	R0,a
+	mov	a,R1
+	subb a,y+1
+	mov	R1,a
+	mov	a,R2
+	subb a,y+2
+	mov	R2,a
+	mov	a,R3
+	subb a,y+3
+	mov	R3,a
+	
+	; Set the least significant bit of z to 1
+	orl	z+0,#1
+	
+div32z_minus:
+	djnz R4, div32z_loop	; -> no
+	
+div32z_exit:
 
 	pop AR4
 	pop AR3
