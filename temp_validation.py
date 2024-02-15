@@ -19,9 +19,9 @@ serc = serial.Serial(
 )
 serc.isOpen()
 
-serm = serial.Serial('COM14', 9600, timeout=0.5)
+serm = serial.Serial('COM17', 9600, timeout=0.5)
 
-ambtemp = 0
+ambtemp = 22
 winsize = 10
 multdata, micdata, avgmicdata = [], [], []
 for i in range(5):
@@ -40,28 +40,28 @@ def update_amb_temp():
    ambtemp = valc2*100-273.15
    print(ambtemp)
 
-def update_cont_temp(i,j):
+def update_cont_temp():
     # read from microcontroller and append to micdata
     strinc = serc.readline()
     
     valc = float(strinc[0:10])
-    valc2 = float(strinc[10:19])
+    #valc2 = float(strinc[10:19])
 
-    global ambtemp
-    ambtemp = valc2*100-273.15
+    #global ambtemp
+    #ambtemp = valc2*100-273.15
     #ambtemp = 22
 
     #print(ambtemp)
     #print(f'{strinc} = {valc} + {valc2}')
-    val1 = valc*327.5/98500.0+valc**2*0.00001+valc**3*0.00000+0.00003 #this is how we scale using opamp factor
+    #val1 = valc*327.5/98500.0+valc**2*0.00001+valc**3*0.00000+0.00003 #this is how we scale using opamp factor
                                         #and some extra scaling to make temp reading more accurate
-    #print(valc)
-    mictemp = val1/(41*0.000001) + ambtemp
-    micdata.append(mictemp)
-    if (i == winsize-1):
-        avgtemp = np.sum(micdata[winsize*j:winsize*(j+1)])/winsize
-        avgmicdata.append(avgtemp)
-        print(f'microcontroller: {avgtemp}')
+    #mictemp = val1/(41*0.000001) + ambtemp
+    #print(val1)
+    micdata.append(valc)
+    #if (i == winsize-1):
+    #avgtemp = np.sum(micdata[winsize*j:winsize*(j+1)])/winsize
+    avgmicdata.append(valc)
+    print(f'microcontroller: {valc}')
 
 
 def update_mult_temp():
@@ -96,7 +96,7 @@ def exit_handler():
             "Microcontroller" : avgmicdata,
         }
     )
-    df.to_excel("tempvalidation.xlsx")
+    df.to_excel("Proj1.xlsx")
     print('done!')
     sys.exit()
 
@@ -112,13 +112,13 @@ def set_ambtemp():
 
 top = tkinter.Tk()
 
-setB = tkinter.Button(top, text = f"Set ambient temp to {round(ambtemp,2)}", command = set_ambtemp)
-setB.pack()
+#setB = tkinter.Button(top, text = f"Set ambient temp to {round(ambtemp,2)}", command = set_ambtemp)
+#setB.pack()
 
-while ambset == 0:
-    top.update()
-    update_amb_temp()
-    setB.config(text=f"Set ambient temp to {round(ambtemp,2)}")
+#while ambset == 0:
+#    top.update()
+#    update_amb_temp()
+#    setB.config(text=f"Set ambient temp to {round(ambtemp,2)}")
 
 
 
@@ -135,17 +135,16 @@ if len(pstring) > 1:
         serm.readline() # Read and discard the prompt "=>"
         serm.write(b"MEAS1?\r\n") # Request first value from multimeter
 
-setB.destroy()
+#setB.destroy()
 B = tkinter.Button(top, text="End Program", command = set_button)
 B.pack()
 
 
 while 1:
     top.update()
-    for i in range(winsize):
-        update_cont_temp(i,j)
+    update_cont_temp()
     update_mult_temp()
-    j+=1
+    #j+=1
     if (button == 1):
         exit_handler()
 
