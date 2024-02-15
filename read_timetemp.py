@@ -231,7 +231,7 @@ fig = plt.figure()
 fig.canvas.mpl_connect('close_event', on_close_figure)
 ax = fig.add_subplot(111)
 # creates an empty plot
-line_temp, = ax.plot([],[],lw=2,color = 'pink', label = 'Temperature, degrees C')
+line_temp, = ax.plot([],[],lw=2,color = 'k', label = 'Temperature, degrees C')
 
 
 
@@ -253,11 +253,11 @@ l2 = ax.legend([vlsoak, vlp2s, vlrefl, vlcool, vlsafe], ['preheat','soak', 'peak
 ax.add_artist(l2)
 l1 = ax.legend(handles = [line_temp], loc=1)
 
-rectpre = patches.Rectangle((0, 0), 0, 250, linewidth=0, facecolor='g', alpha = 0.4)
-rectsoak = patches.Rectangle((0, 0), 0, 250, linewidth=0, facecolor='y', alpha = 0.4)
-rectp2s = patches.Rectangle((0, 0), 0, 250, linewidth=0, facecolor='r', alpha = 0.4)
-rectrefl = patches.Rectangle((0, 0), 0, 250, linewidth=0, facecolor='b', alpha = 0.4)
-rectcool = patches.Rectangle((0, 0), 0, 250, linewidth=0, facecolor='m', alpha = 0.4)
+rectpre = patches.Rectangle((0, 0), 0, 250, linewidth=0, facecolor='g', alpha = 0.3)
+rectsoak = patches.Rectangle((0, 0), 0, 250, linewidth=0, facecolor='y', alpha = 0.3)
+rectp2s = patches.Rectangle((0, 0), 0, 250, linewidth=0, facecolor='r', alpha = 0.3)
+rectrefl = patches.Rectangle((0, 0), 0, 250, linewidth=0, facecolor='b', alpha = 0.3)
+rectcool = patches.Rectangle((0, 0), 0, 250, linewidth=0, facecolor='m', alpha = 0.3)
 
 
 
