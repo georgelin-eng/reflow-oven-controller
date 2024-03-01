@@ -33,7 +33,7 @@ safetotouch = pygame.mixer.Sound(safetotouch_file)
 
 #closing it is safe to touch annoucement
 thatisall_file = "C:\\Users\\maya2\\Desktop\\291pythonproj\\thatisall.mp3"
-thatisall = pygame.mixer.Sound(safetotouch_file)  
+thatisall = pygame.mixer.Sound(thatisall_file)  
 
 #closing it is safe to touch annoucement
 soakstart_file = "C:\\Users\\maya2\\Desktop\\291pythonproj\\soakstart.mp3"
@@ -50,7 +50,7 @@ trumpet = pygame.mixer.Sound(trumpet_file)
 #warning temperature TOO HIGH!!
 temptoohigh = 240
 temptoohighflag = 0 #so we don't repeatedly say too high
-warningtoohigh_file = "C:\\Users\\maya2\\Desktop\\291pythonproj\\trumpet.mp3"
+warningtoohigh_file = "C:\\Users\\maya2\\Desktop\\291pythonproj\\warningtoohigh.mp3"
 warningtoohigh = pygame.mixer.Sound(warningtoohigh_file)
 
 
@@ -153,7 +153,7 @@ def data_gen():
 
 def run(data):
     # update the data
-    global soakstart, reflstart, p2sstart, coolstart, soakflag, p2sflag, reflflag, coolflag, safeflag
+    global soakstart, reflstart, p2sstart, coolstart, soakflag, p2sflag, reflflag, coolflag, safeflag, temptoohighflag
     t, temperature = data
     if t>-1:
         xdata.append(t)
@@ -218,6 +218,7 @@ def run(data):
 
 def on_close_figure(event):
     thatisall.play()
+    pygame.time.wait(int(thatisall.get_length() * 1000)) 
     df = pd.DataFrame(
         {
             "Temperature (C)" : temp_data
